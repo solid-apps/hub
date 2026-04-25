@@ -8,7 +8,7 @@
  *   - Upcoming events from /hub/calendar/
  */
 
-import { fetchWebIdProfile, listContainer, getJsonLd, hubRoot, discoverStorage } from "../pod.js";
+import { fetchWebIdProfile, listContainer, getJsonLd, hubRoot, discoverStorage, fetchTypeIndex, findRegistrations, TRACKER_CLASS } from "../pod.js";
 import { ICON, escape, fmtRel, $, $$, avatarHTML } from "../ui.js";
 
 export async function render(container, ctx) {
@@ -103,32 +103,52 @@ export async function render(container, ctx) {
 
   $$("[data-go]").forEach(el => el.addEventListener("click", () => ctx.switchApp(el.dataset.go)));
 
-  loadHomeTasks(storage);
+  loadHomeTasks(ctx);
   loadHomeEvents(storage);
   loadHomeNotes(storage);
-  loadHomeStats(storage);
+  loadHomeStats(storage, ctx);
 }
 
-async function loadHomeTasks(storage) {
-  if (!storage) return;
+async function loadHomeTasks(ctx) {
+  // Discover trackers via TypeIndex (matches the Tasks app), aggregate open
+  // todos across all of them.
+  const list = $("#home-tasks");
+  if (!list) return;
   try {
-    const url = hubRoot(storage) + "tasks/list.jsonld";
-    const doc = await getJsonLd(url);
-    const open = (doc?.issue || []).filter(t => t.status !== "completed");
-    const list = $("#home-tasks");
-    if (!list) return;
-    if (!open.length) {
-      list.innerHTML = `<div style="color:var(--text-faint);font-size:13px">Inbox zero. 🎯</div>`;
+    const ti = await fetchTypeIndex(ctx.auth.id);
+    const regs = findRegistrations(ti, TRACKER_CLASS).filter(r => r.instance);
+    if (!regs.length) {
+      list.innerHTML = `<div style="color:var(--text-faint);font-size:13px">No trackers registered in your TypeIndex yet.</div>`;
       return;
     }
-    list.innerHTML = open.slice(0, 5).map(t => `
+    const docs = await Promise.all(regs.map(r =>
+      getJsonLd(r.instance.replace(/#.*$/, "")).catch(() => null)
+    ));
+    const open = [];
+    docs.forEach((doc, i) => {
+      if (!doc?.issue) return;
+      const trackerLabel = (regs[i].instance || "").split("/").pop().split("#")[0]
+        .replace(/-data\.jsonld$/, "").replace(/\.jsonld$/, "");
+      doc.issue.forEach(t => {
+        if (t.status !== "completed") open.push({ ...t, _tracker: trackerLabel });
+      });
+    });
+    if (!open.length) {
+      list.innerHTML = `<div style="color:var(--text-faint);font-size:13px">All trackers are inbox zero. 🎯</div>`;
+      return;
+    }
+    list.innerHTML = open.slice(0, 6).map(t => `
       <div style="display:flex;align-items:center;gap:10px;padding:6px 0;font-size:14px">
         <span style="width:14px;height:14px;border:2px solid var(--text-faint);border-radius:4px;flex-shrink:0"></span>
-        <span>${escape(t.summary)}</span>
+        <span style="flex:1">${escape(t.summary || "(untitled)")}</span>
+        <span style="font-size:11px;color:var(--text-faint);font-family:var(--mono)">${escape(t._tracker)}</span>
       </div>
     `).join("");
-  } catch {
-    $("#home-tasks").innerHTML = `<div style="color:var(--text-faint);font-size:13px">No tasks list yet.</div>`;
+    if (open.length > 6) {
+      list.innerHTML += `<div style="color:var(--text-faint);font-size:12px;margin-top:6px">+${open.length - 6} more</div>`;
+    }
+  } catch (e) {
+    list.innerHTML = `<div style="color:var(--text-faint);font-size:13px">${escape(e.message || "Couldn't load tasks.")}</div>`;
   }
 }
 
@@ -194,13 +214,22 @@ async function loadHomeNotes(storage) {
   }
 }
 
-async function loadHomeStats(storage) {
+async function loadHomeStats(storage, ctx) {
   if (!storage) return;
   try {
     const root = hubRoot(storage);
+    // Tasks come from TypeIndex (counts open todos across all discovered trackers)
+    const tasksPromise = (async () => {
+      try {
+        const ti = await fetchTypeIndex(ctx.auth.id);
+        const regs = findRegistrations(ti, TRACKER_CLASS).filter(r => r.instance);
+        const docs = await Promise.all(regs.map(r => getJsonLd(r.instance.replace(/#.*$/, "")).catch(() => null)));
+        return docs.reduce((sum, d) => sum + (d?.issue?.length || 0), 0);
+      } catch { return 0; }
+    })();
     const [notes, tasks, events, photos] = await Promise.all([
       listContainer(root + "notes/").then(items => items.filter(i => i.type === "resource").length).catch(() => 0),
-      getJsonLd(root + "tasks/list.jsonld").then(d => (d?.issue || []).length).catch(() => 0),
+      tasksPromise,
       listContainer(root + "calendar/").then(items => items.filter(i => i.type === "resource").length).catch(() => 0),
       listContainer(root + "photos/").then(items => items.filter(i => i.type === "resource").length).catch(() => 0),
     ]);

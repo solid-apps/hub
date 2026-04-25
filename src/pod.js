@@ -162,9 +162,15 @@ export async function discoverStorage(webid) {
     const doc = await getJsonLd(url);
     if (doc) {
       const subj = findSubject(doc, webid.includes("#") ? webid.split("#")[1] : null);
-      const v = subj["pim:storage"] ?? subj[PIM_NS + "storage"] ?? subj["space:storage"];
+      const v = subj["pim:storage"] ?? subj[PIM_NS + "storage"] ?? subj["space:storage"] ?? subj["storage"];
       const id = valueOf(v);
-      if (id) return id.replace(/\/?$/, "/");
+      if (id) {
+        // Resolve relative URLs (e.g. "./") against the WebID document URL.
+        try {
+          const abs = new URL(id, url).href;
+          return abs.replace(/\/?$/, "/");
+        } catch { return id.replace(/\/?$/, "/"); }
+      }
     }
   } catch {}
   // fallback: webid origin + slash
