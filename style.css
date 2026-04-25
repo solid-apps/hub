@@ -38,6 +38,10 @@
   --shadow: 0 10px 30px -12px rgba(20,30,60,.18), 0 4px 8px -4px rgba(20,30,60,.06);
 }
 * { box-sizing: border-box; }
+/* Sensible default: any SVG inside a heading defaults to icon-size,
+ * so a stray ${ICON.x} in a <h2>/<h3> doesn't expand to fill its
+ * container. Per-context rules with higher specificity still win. */
+h1 svg, h2 svg, h3 svg, h4 svg { width: 14px; height: 14px; flex-shrink: 0; }
 html, body { height: 100%; margin: 0; }
 body {
   font-family: var(--sans);
@@ -306,6 +310,7 @@ body::before {
   color: var(--text-faint);
   display: flex; align-items: center; gap: 8px;
 }
+.card h2 svg { width: 13px; height: 13px; flex-shrink: 0; }
 .card h2 .more {
   margin-left: auto;
   color: var(--accent);
