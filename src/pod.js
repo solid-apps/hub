@@ -216,5 +216,70 @@ export async function ensureContainer(url) {
 
 // ---- Helpers -------------------------------------------------------------
 
+// ---- TypeIndex discovery -------------------------------------------------
+// Same shape as pilot's fetchTypeIndex — the canonical Solid pattern for
+// discovering where each @type's data lives. We delegate to the user's
+// solid:publicTypeIndex; we don't hardcode container paths.
+
+export const TRACKER_CLASS = "http://www.w3.org/2005/01/wf/flow#Tracker";
+const SOLID_TERMS = "http://www.w3.org/ns/solid/terms#";
+
+const idOf = (v) => typeof v === "string" ? v : (v && v["@id"]) || null;
+
+/**
+ * Fetch and flatten the user's public TypeIndex. Returns
+ *   { typeIndexUrl, registrations: [{ forClass, instance, instanceContainer }] }
+ *
+ * Robust to:
+ *   - JSS/SolidOS profiles that alias the predicate as a bare key
+ *   - HTML WebIDs with embedded JSON-LD islands (handled by getJsonLd)
+ *   - Registrations nested under @graph or schema:itemListElement
+ */
+export async function fetchTypeIndex(webid) {
+  if (!isHttpUrl(webid)) throw new Error("WebID is not an http(s) URL");
+  const webIdDoc = await getJsonLd(webid.replace(/#.*$/, ""));
+  if (!webIdDoc) throw new Error("WebID document not found");
+  const subj = findSubject(webIdDoc, webid.includes("#") ? webid.split("#")[1] : null);
+
+  const tiRef = subj["solid:publicTypeIndex"]
+             ?? subj[SOLID_TERMS + "publicTypeIndex"]
+             ?? subj["publicTypeIndex"];
+  const tiId = idOf(tiRef);
+  if (!tiId) throw new Error("no solid:publicTypeIndex on WebID");
+  const tiUrl = new URL(tiId, webid).href;
+
+  const ti = await getJsonLd(tiUrl);
+  if (!ti) throw new Error("TypeIndex returned no document");
+
+  // Walk the doc collecting any subject with solid:forClass.
+  const nodes = [];
+  const collect = (x) => {
+    if (!x || typeof x !== "object") return;
+    if (Array.isArray(x)) { x.forEach(collect); return; }
+    if (x["solid:forClass"] || x[SOLID_TERMS + "forClass"]) nodes.push(x);
+    for (const v of Object.values(x)) if (typeof v === "object") collect(v);
+  };
+  collect(ti);
+
+  const registrations = nodes.map(n => ({
+    forClass:          idOf(n["solid:forClass"]          ?? n[SOLID_TERMS + "forClass"]),
+    instance:          idOf(n["solid:instance"]          ?? n[SOLID_TERMS + "instance"]),
+    instanceContainer: idOf(n["solid:instanceContainer"] ?? n[SOLID_TERMS + "instanceContainer"]),
+  })).filter(r => r.forClass && (r.instance || r.instanceContainer));
+
+  // Resolve any relative instance/instanceContainer URLs against the TypeIndex URL.
+  registrations.forEach(r => {
+    if (r.instance && !/^https?:/.test(r.instance)) r.instance = new URL(r.instance, tiUrl).href;
+    if (r.instanceContainer && !/^https?:/.test(r.instanceContainer)) r.instanceContainer = new URL(r.instanceContainer, tiUrl).href;
+  });
+
+  return { typeIndexUrl: tiUrl, registrations };
+}
+
+export function findRegistrations(typeIndex, classIri) {
+  if (!typeIndex) return [];
+  return typeIndex.registrations.filter(r => r.forClass === classIri);
+}
+
 /** Convert a fetcher 404 to null at higher level. Internal use. */
 export { findSubject, valueOf, normalizeProfile };

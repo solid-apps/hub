@@ -2,13 +2,19 @@
  * Settings — theme, identity, pod info.
  */
 
-import { discoverStorage, hubRoot } from "../pod.js";
+import { discoverStorage, hubRoot, fetchTypeIndex, findRegistrations, TRACKER_CLASS } from "../pod.js";
 import { logout } from "../auth.js";
 import { ICON, escape, $, $$ } from "../ui.js";
 
 export async function render(container, ctx) {
   let storage = null;
-  if (ctx.auth.loggedIn) storage = await discoverStorage(ctx.auth.id).catch(() => null);
+  let typeIndex = null;
+  let typeIndexErr = null;
+  if (ctx.auth.type === "solid") {
+    storage = await discoverStorage(ctx.auth.id).catch(() => null);
+    try { typeIndex = await fetchTypeIndex(ctx.auth.id); }
+    catch (e) { typeIndexErr = e.message; }
+  }
 
   const theme = document.documentElement.getAttribute("data-theme") || "dark";
 
@@ -58,6 +64,43 @@ export async function render(container, ctx) {
           </div>
         `}
       </div>
+
+      ${ctx.auth.type === "solid" ? `
+        <div class="set-section">
+          <h2>TypeIndex</h2>
+          ${typeIndex ? `
+            <div class="set-row">
+              <div><div class="lbl">Public TypeIndex</div><div class="desc">Where apps discover where your data lives.</div></div>
+              <div class="val">${escape(typeIndex.typeIndexUrl)}</div>
+            </div>
+            <div class="set-row">
+              <div><div class="lbl">Registrations</div><div class="desc">${typeIndex.registrations.length} total, ${findRegistrations(typeIndex, TRACKER_CLASS).length} for wf:Tracker.</div></div>
+              <div class="val">${typeIndex.registrations.length}</div>
+            </div>
+            ${typeIndex.registrations.length ? `
+              <div class="set-row" style="display:block">
+                <div class="lbl" style="margin-bottom:8px">All registrations</div>
+                <div style="background:var(--bg-elev-2);padding:10px 14px;border-radius:8px;border:1px solid var(--line);font-family:var(--mono);font-size:12px;line-height:1.6;color:var(--text-dim);max-height:280px;overflow-y:auto">
+                  ${typeIndex.registrations.map(r => `
+                    <div style="padding:6px 0;border-bottom:1px solid var(--line)">
+                      <div><span style="color:var(--text-faint)">forClass:</span> ${escape(r.forClass)}</div>
+                      ${r.instance ? `<div style="word-break:break-all"><span style="color:var(--text-faint)">instance:</span> ${escape(r.instance)}</div>` : ""}
+                      ${r.instanceContainer ? `<div style="word-break:break-all"><span style="color:var(--text-faint)">instanceContainer:</span> ${escape(r.instanceContainer)}</div>` : ""}
+                    </div>
+                  `).join("")}
+                </div>
+              </div>
+            ` : ""}
+          ` : `
+            <div class="set-row">
+              <div>
+                <div class="lbl" style="color:var(--danger)">TypeIndex not available</div>
+                <div class="desc">${escape(typeIndexErr || "")}</div>
+              </div>
+            </div>
+          `}
+        </div>
+      ` : ""}
 
       <div class="set-section">
         <h2>Schema</h2>
