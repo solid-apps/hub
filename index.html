@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>hub-pod · your Solid workspace</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%237c5cff' d='M10 13a5 5 0 0 1 0-7l3-3a5 5 0 0 1 7 7l-1.5 1.5M14 11a5 5 0 0 1 0 7l-3 3a5 5 0 0 1-7-7l1.5-1.5'/%3E%3C/svg%3E" />
+<link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <a href="https://github.com/solid-apps" class="brand-mark" title="solid-apps">
+          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.4" stroke-linecap="round">
+            <path d="M10 13a5 5 0 0 1 0-7l3-3a5 5 0 0 1 7 7l-1.5 1.5"/>
+            <path d="M14 11a5 5 0 0 1 0 7l-3 3a5 5 0 0 1-7-7l1.5-1.5"/>
+          </svg>
+        </a>
+      </div>
+      <div class="topbar-app-title" id="topbar-title"></div>
+      <div class="topbar-actions">
+        <button class="search-trigger" id="search-trigger" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <span class="label">Search your pod</span>
+          <span class="spacer"></span>
+          <span class="kbd">⌘K</span>
+        </button>
+        <button class="icon-btn" id="theme-btn" title="Toggle theme (T)" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="theme-icon"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </button>
+        <span id="auth-pill"></span>
+      </div>
+    </header>
+
+    <nav class="rail" id="rail"></nav>
+    <aside class="sidebar" id="sidebar"></aside>
+    <main class="main" id="main"></main>
+  </div>
+
+  <div class="spot-bg" id="spot-bg">
+    <div class="spot" onclick="event.stopPropagation()">
+      <div class="spot-input-wrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input class="spot-input" id="spot-input" placeholder="Search apps and items on your pod…" autocomplete="off" />
+        <span class="kbd">esc</span>
+      </div>
+      <div class="spot-results" id="spot-results"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <!-- xlogin: one-tag auth (Solid OIDC + Nostr) -->
+  <script src="https://unpkg.com/xlogin"></script>
+
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>
