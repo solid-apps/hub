@@ -21,14 +21,28 @@ const VCARD_NS = "http://www.w3.org/2006/vcard/ns#";
 
 // ---- JSON-LD CRUD ---------------------------------------------------------
 
+/**
+ * Get a JSON-LD resource. Handles three cases:
+ *   1. application/ld+json (or application/json) → parse JSON
+ *   2. text/html → extract the <script type="application/ld+json"> island
+ *      (SolidOS-style HTML WebIDs, e.g. melvin.me)
+ *   3. anything else → throw
+ */
 export async function getJsonLd(url) {
   const res = await authFetch(url, { headers: { Accept: "application/ld+json" } });
-  if (res.status === 404) return null; // missing → null (vs throwing)
+  if (res.status === 404) return null;
   if (!res.ok) throw new Error(`GET ${res.status} ${res.statusText} (${url})`);
   const ct = (res.headers.get("content-type") || "").toLowerCase();
-  if (!ct.includes("ld+json") && !ct.includes("application/json"))
-    throw new Error(`pod returned ${ct || "unknown content type"} (need JSON-LD)`);
-  return res.json();
+  if (ct.includes("ld+json") || ct.includes("application/json")) {
+    return res.json();
+  }
+  if (ct.includes("text/html")) {
+    const html = await res.text();
+    const m = html.match(/<script\s+type=["']application\/ld\+json["']\s*>([\s\S]*?)<\/script>/i);
+    if (!m) throw new Error(`HTML WebID without JSON-LD island (${url})`);
+    return parseLooseJson(m[1].trim());
+  }
+  throw new Error(`pod returned ${ct || "unknown content type"} (need JSON-LD or HTML+island)`);
 }
 
 export async function putJsonLd(url, body) {
@@ -101,6 +115,21 @@ function findSubject(doc, fragmentId) {
     if (m) return m;
   }
   return graph[0];
+}
+
+/**
+ * JSON.parse but tolerant of trailing commas. SolidOS-style HTML WebIDs
+ * occasionally have trailing commas in their JSON-LD island — we accept
+ * that to be useful. Note: we don't strip JS line comments because they
+ * collide with `http://` URLs inside string values.
+ */
+function parseLooseJson(s) {
+  try { return JSON.parse(s); }
+  catch {
+    const cleaned = s.replace(/,(\s*[\}\]])/g, "$1");
+    try { return JSON.parse(cleaned); }
+    catch (e) { throw new Error(`JSON-LD parse failed: ${e.message}`); }
+  }
 }
 
 /** True if `s` parses as an absolute http(s) URL. */
