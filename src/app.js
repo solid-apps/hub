@@ -184,7 +184,7 @@ function spotSearch(q) {
 
 function init() {
   // Theme
-  const savedTheme = localStorage.getItem("hubpod-theme") || "dark";
+  const savedTheme = localStorage.getItem("hubpod-theme") || "light";
   setTheme(savedTheme);
 
   $("#theme-btn").addEventListener("click", toggleTheme);

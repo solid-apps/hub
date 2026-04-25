@@ -16,7 +16,7 @@ export async function render(container, ctx) {
     catch (e) { typeIndexErr = e.message; }
   }
 
-  const theme = document.documentElement.getAttribute("data-theme") || "dark";
+  const theme = document.documentElement.getAttribute("data-theme") || "light";
 
   container.innerHTML = `
     <div class="content"><div class="page-pad">
