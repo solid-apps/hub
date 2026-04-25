@@ -1,10 +1,12 @@
-# hub-pod
+# hub
 
 A multi-app workspace for your Solid pod. Profile, Files, Calendar, Contacts, Notes, Tasks, Photos — all stored as JSON-LD on a pod you own.
 
-The UI is the [Linked Objects Hub](https://linkedobjects.org/demo/hub/) demo, wired to real data via [xlogin](https://unpkg.com/xlogin) + JSON-LD CRUD. Apps share an LDP-style layout under `/hub/` on your pod, and a TypeIndex registration so other Solid apps can discover the same data.
+The UI is the [Linked Objects Hub](https://linkedobjects.org/demo/hub/) demo, wired to real data via [xlogin](https://unpkg.com/xlogin) + JSON-LD CRUD. Tasks discover trackers through your `solid:publicTypeIndex` (same convention as [pilot](https://github.com/solid-apps/pilot) and SolidOS' tracker-pane); other apps default to `/hub/` on your pod and can be moved by editing your TypeIndex.
 
-Status: **early local dev**. Not deployed yet.
+Live: <https://solid-apps.github.io/hub/>
+
+Status: **early — read paths solid, write paths exercised but not exhaustively tested.**
 
 ## Stack
 
