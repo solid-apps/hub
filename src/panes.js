@@ -87,6 +87,24 @@ async function loadExternal(url) {
   return pane;
 }
 
+/** Read-only view of currently-cached external panes (loaded via urn:solid:view). */
+export function listExternal() {
+  return [...loadCache.entries()].map(([url, pane]) => ({
+    url,
+    loaded: !!pane,
+    meta: pane ? { ...(pane.meta || {}) } : null,
+  }));
+}
+
+/** Programmatically attempt to load + register an external pane URL. */
+export async function loadAndRegister(url) {
+  const pane = await loadExternal(url);
+  if (!pane) throw new Error("Pane URL didn't expose canHandle + render");
+  // Add to registry so findFor sees it without needing urn:solid:view
+  registry.unshift(pane); // unshift so it wins over later-registered defaults
+  return pane;
+}
+
 /**
  * Adapt a pane module to hub-pod's pane interface.
  *

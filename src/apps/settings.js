@@ -4,7 +4,8 @@
 
 import { discoverStorage, hubRoot, fetchTypeIndex, findRegistrations, TRACKER_CLASS, NOTE_CLASSES, CALENDAR_CLASSES, IMAGE_CLASSES } from "../pod.js";
 import { logout } from "../auth.js";
-import { ICON, escape, $, $$ } from "../ui.js";
+import { ICON, escape, $, $$, showToast } from "../ui.js";
+import { listRegistered, listExternal, loadAndRegister } from "../panes.js";
 
 export async function render(container, ctx) {
   let storage = null;
@@ -38,6 +39,26 @@ export async function render(container, ctx) {
             <div class="desc">Off → use hub's <code>src/panes/tracker.js</code> (vendored from pilot, evolves independently here).<br/>On → load <a href="https://solid-apps.github.io/pilot/tracker-pane.js" target="_blank" style="color:var(--accent)">pilot's remote tracker-pane.js</a> at runtime instead. Useful for comparing hub's diverging copy against the upstream. Reload after toggling.</div>
           </div>
           <div class="toggle ${localStorage.getItem("hubpod-use-pilot-tracker") === "1" ? "on" : ""}" id="pilot-toggle"><div class="knob"></div></div>
+        </div>
+
+        <div class="set-row" style="display:block">
+          <div class="lbl" style="margin-bottom:10px">Registered panes</div>
+          <div class="desc" style="margin-bottom:12px">Built-in panes are loaded at boot from <code>src/panes/</code>. External panes are loaded on demand via <code>urn:solid:view</code> on a TypeRegistration. First-match wins inside <code>findFor()</code>; <code>urn:solid:view</code> takes precedence over both via <code>resolveFor()</code>.</div>
+          <div id="panes-registered-list" style="background:var(--bg-elev-2);padding:10px 14px;border-radius:8px;border:1px solid var(--line);font-family:var(--mono);font-size:12px;line-height:1.6"></div>
+        </div>
+
+        <div class="set-row" style="display:block">
+          <div class="lbl" style="margin-bottom:10px">External panes loaded this session</div>
+          <div id="panes-external-list" style="background:var(--bg-elev-2);padding:10px 14px;border-radius:8px;border:1px solid var(--line);font-family:var(--mono);font-size:12px;line-height:1.6;color:var(--text-dim)"></div>
+        </div>
+
+        <div class="set-row" style="display:block">
+          <div class="lbl" style="margin-bottom:8px">Load a pane URL</div>
+          <div class="desc" style="margin-bottom:10px">Manually pull in an ES module that exports <code>canHandle</code> + <code>render</code> (hub-style or LOSOS-style). It'll be added to the registry with priority over the built-ins.</div>
+          <div style="display:flex;gap:8px">
+            <input id="pane-load-url" placeholder="https://example.org/my-pane.js" style="flex:1;background:var(--bg-elev);border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-family:var(--mono);font-size:13px;color:var(--text);outline:none" />
+            <button class="btn primary" id="pane-load-btn">Load</button>
+          </div>
         </div>
       </div>
 
@@ -151,7 +172,59 @@ export async function render(container, ctx) {
       render(container, ctx);
     }
   });
+
+  // ---- Panes browser ----
+  drawPanesLists();
+
+  $("#pane-load-btn")?.addEventListener("click", async () => {
+    const url = $("#pane-load-url")?.value.trim();
+    if (!url) return;
+    const btn = $("#pane-load-btn");
+    btn.disabled = true; btn.textContent = "Loading…";
+    try {
+      const pane = await loadAndRegister(url);
+      showToast(`Loaded ${pane.meta?.name || pane.meta?.id || url}`, "success");
+      $("#pane-load-url").value = "";
+      drawPanesLists();
+    } catch (e) {
+      showToast("Load failed: " + e.message, "error");
+    } finally {
+      btn.disabled = false; btn.textContent = "Load";
+    }
+  });
+
   $("#logout-btn")?.addEventListener("click", () => logout());
+}
+
+function drawPanesLists() {
+  const reg = $("#panes-registered-list");
+  if (reg) {
+    const panes = listRegistered();
+    reg.innerHTML = panes.length === 0
+      ? `<div style="color:var(--text-faint)">No panes registered.</div>`
+      : panes.map((p, i) => `
+          <div style="padding:6px 0;${i > 0 ? "border-top:1px solid var(--line);" : ""}">
+            <div style="color:var(--text);font-weight:600">${escape(p.name || p.id || "(unnamed)")}</div>
+            <div style="color:var(--text-faint);word-break:break-all">id: ${escape(p.id || "—")}</div>
+            ${p.forClass ? `<div style="color:var(--text-faint);word-break:break-all">forClass: ${escape(p.forClass)}</div>` : ""}
+            ${Array.isArray(p.forClasses) ? `<div style="color:var(--text-faint);word-break:break-all">forClasses: ${escape(p.forClasses.join(", "))}</div>` : ""}
+          </div>
+        `).join("");
+  }
+  const ext = $("#panes-external-list");
+  if (ext) {
+    const cached = listExternal();
+    if (cached.length === 0) {
+      ext.innerHTML = `<span>None yet — set <code>urn:solid:view</code> on a TypeRegistration, or use the load box below.</span>`;
+    } else {
+      ext.innerHTML = cached.map((c, i) => `
+        <div style="padding:6px 0;${i > 0 ? "border-top:1px solid var(--line);" : ""};color:var(--text-dim)">
+          <div style="word-break:break-all;color:${c.loaded ? 'var(--good)' : 'var(--danger)'}">${c.loaded ? "✓" : "✗"} ${escape(c.url)}</div>
+          ${c.meta?.name ? `<div style="color:var(--text-faint)">name: ${escape(c.meta.name)}</div>` : ""}
+        </div>
+      `).join("");
+    }
+  }
 }
 
 export const meta = { name: "Settings", icon: ICON.settings, hasSidebar: false };
