@@ -228,6 +228,15 @@ export async function ensureContainer(url) {
 // solid:publicTypeIndex; we don't hardcode container paths.
 
 export const TRACKER_CLASS = "http://www.w3.org/2005/01/wf/flow#Tracker";
+// Common @type IRIs used to register image collections in a Solid TypeIndex.
+// We accept any of these — pods vary in which they use.
+export const IMAGE_CLASSES = [
+  "http://schema.org/ImageGallery",
+  "http://schema.org/Photograph",
+  "http://schema.org/Photo",
+  "http://schema.org/ImageObject",
+  "http://xmlns.com/foaf/0.1/Image",
+];
 const SOLID_TERMS = "http://www.w3.org/ns/solid/terms#";
 
 const idOf = (v) => typeof v === "string" ? v : (v && v["@id"]) || null;
