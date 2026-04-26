@@ -31,6 +31,8 @@ import * as EventPane        from "./panes/event.js";
 import * as PhotoPane        from "./panes/photo.js";
 import * as PersonPane       from "./panes/person.js";
 import * as FilePane         from "./panes/file.js";
+import * as BookmarkPane     from "./panes/bookmark.js";
+import * as PostPane         from "./panes/post.js";
 import * as CollectionPane   from "./panes/collection.js";
 import { register as registerPane, adapt } from "./panes.js";
 
@@ -48,7 +50,9 @@ registerPane(adapt(NotePane,    "hub-pod/note"));
 registerPane(adapt(EventPane,   "hub-pod/event"));
 registerPane(adapt(PhotoPane,   "hub-pod/photo"));
 registerPane(adapt(PersonPane,  "hub-pod/person"));
-registerPane(adapt(FilePane,    "hub-pod/file"));
+registerPane(adapt(FilePane,     "hub-pod/file"));
+registerPane(adapt(BookmarkPane, "hub-pod/bookmark"));
+registerPane(adapt(PostPane,     "hub-pod/post"));
 registerPane(adapt(CollectionPane, "hub-pod/collection"));
 
 // Built-in apps. Order here = rail order. External apps load via

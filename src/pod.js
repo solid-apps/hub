@@ -288,6 +288,19 @@ export const LIST_CLASSES = [
   "https://schema.org/ItemList",
 ];
 
+// SolidOS-style bookmark vocabulary. The `bookmark:recalls` predicate
+// links the Bookmark resource to the URL it represents.
+export const BOOKMARK_CLASSES = [
+  "http://www.w3.org/2002/01/bookmark#Bookmark",
+];
+
+// ActivityStreams Note — short text post. Used by ActivityPub feeds and
+// any app posting microblog-shaped content to a pod.
+export const POST_CLASSES = [
+  "https://www.w3.org/ns/activitystreams#Note",
+  "http://www.w3.org/ns/activitystreams#Note",
+];
+
 // urn:solid:App — provisional class for "an installed app on this pod."
 // Each app is a URL to an ES module conforming to hub-pod's app interface
 // (meta + render). Used as the forClass on a TypeRegistration whose
