@@ -28,7 +28,10 @@ export const meta = {
   hasSidebar: false,
 };
 
-const DIRECTORY_URL = new URL("./directory/index.json", document.baseURI).href;
+// Curated registry (apps + panes), served from solid-apps/registry on
+// gh-pages. Submit entries via PR there. Hub's local ./directory/ stays
+// as the home of the seed apps' source — the registry just points at them.
+const DIRECTORY_URL = "https://solid-apps.github.io/registry/index.json";
 
 // Hosts considered "trusted" — install without confirm. Mirrors Settings.
 const TRUSTED_HOSTS = new Set(["solid-apps.github.io", "localhost", "127.0.0.1"]);
