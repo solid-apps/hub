@@ -7,7 +7,10 @@
  */
 
 import { fetchWebIdProfile, getJsonLd, findSubject, valueOf } from "../pod.js";
+import { findFor } from "../panes.js";
 import { ICON, escape, initials, renderSpinner, renderEmpty, $, $$, avatarHTML, requireSolid } from "../ui.js";
+
+const FOAF_PERSON = "http://xmlns.com/foaf/0.1/Person";
 
 const FOAF_NS = "http://xmlns.com/foaf/0.1/";
 
@@ -66,41 +69,28 @@ export async function render(container, ctx) {
     return;
   }
 
-  page.innerHTML = `<div class="contacts-grid" id="contacts-grid">${
-    webIds.map((wid, i) => `
-      <div class="contact-card" data-webid="${escape(wid)}" data-i="${i}">
-        <div class="ava">…</div>
-        <div class="name">Loading…</div>
-        <div class="webid">${escape(wid)}</div>
-      </div>
-    `).join("")
-  }</div>`;
+  page.innerHTML = `<div class="contacts-grid" id="contacts-grid"></div>`;
+  const grid = $("#contacts-grid");
 
-  // Fetch profiles in parallel and update each card as they arrive
+  // Render placeholder cards immediately; resolve profiles in parallel
   webIds.forEach(async (wid, i) => {
+    const slot = document.createElement("div");
+    grid.appendChild(slot);
+    // Initial placeholder via the pane (no profile yet)
+    const pane = findFor({ url: wid, forClass: FOAF_PERSON, mode: "card" });
+    if (!pane) {
+      slot.outerHTML = `<div class="contact-card"><div class="ava">?</div><div class="name">No PersonPane</div><div class="webid">${escape(wid)}</div></div>`;
+      return;
+    }
+    pane.render({ url: wid, forClass: FOAF_PERSON, mode: "card" }, slot, ctx);
+    // Then upgrade with the real profile
     try {
       const profile = await fetchWebIdProfile(wid);
-      const card = $(`[data-i="${i}"]`);
-      if (!card || !profile) return;
-      card.querySelector(".name").textContent = profile.name || "Unnamed";
-      const ava = card.querySelector(".ava");
-      if (profile.img) {
-        ava.innerHTML = `<img src="${escape(profile.img)}" alt="${escape(profile.name || "")}" onerror="this.parentNode.textContent='${escape(initials(profile.name))}'">`;
-      } else {
-        ava.textContent = initials(profile.name);
-      }
+      pane.render({ url: wid, profile, forClass: FOAF_PERSON, mode: "card" }, slot, ctx);
     } catch {
-      const card = $(`[data-i="${i}"]`);
-      if (card) {
-        card.querySelector(".name").textContent = "(profile unavailable)";
-        card.querySelector(".ava").textContent = "?";
-      }
+      // leave placeholder
     }
   });
-
-  $$(".contact-card").forEach(el => el.addEventListener("click", () => {
-    window.open(el.dataset.webid, "_blank");
-  }));
 }
 
 function loginPrompt() {

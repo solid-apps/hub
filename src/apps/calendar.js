@@ -10,6 +10,7 @@ import {
   fetchTypeIndex, CALENDAR_CLASSES,
   listContainer, getJsonLd, putJsonLd, deleteResource,
 } from "../pod.js";
+import { findFor } from "../panes.js";
 import { ICON, escape, showToast, renderEmpty, $, $$, requireSolid } from "../ui.js";
 
 let typeIndex = null;
@@ -17,6 +18,7 @@ let calendars = [];   // [{ url, label, kind, events: [{url, doc}] }]
 let cursor = new Date();
 cursor.setDate(1);
 let primaryCalendar = null; // for "create event" — the first instanceContainer
+let selectedUrl = null;
 
 export function sidebar(ctx) {
   return `
@@ -43,7 +45,8 @@ export async function render(container, ctx) {
       </div>
     </div>
     <div id="cal-message" style="padding:0 24px"></div>
-    <div class="cal-grid" id="cal-grid" style="flex:1"></div>
+    <div class="cal-grid" id="cal-grid" style="flex:0 0 auto"></div>
+    <div id="cal-detail" style="flex:1;overflow-y:auto"></div>
   </div>`;
 
   calendars = [];
@@ -174,6 +177,13 @@ function drawGrid() {
     const ev = allEvents.find(x => x.url === el.dataset.url);
     if (ev) showEventDetails(ev);
   }));
+
+  // If a detail was open for an event we still have, re-render it
+  if (selectedUrl) {
+    const ev = allEvents.find(x => x.url === selectedUrl);
+    if (ev) showEventDetails(ev);
+    else { selectedUrl = null; $("#cal-detail") && ($("#cal-detail").innerHTML = ""); }
+  }
   $$(".cal-day[data-day]").forEach(el => el.addEventListener("click", () => {
     if (primaryCalendar) newEventOnDay(el.dataset.day);
     else showToast("Register an instanceContainer calendar to add events", "error");
@@ -255,21 +265,27 @@ async function newEventOnDay(dayKey) {
 }
 
 function showEventDetails(ev) {
-  const d = new Date(ev.doc.dtstart);
-  const ok = confirm(`${ev.doc.summary || "(event)"}\n${d.toLocaleString("en-GB")}\n\nDelete this event? (Cancel to dismiss)`);
-  if (ok) deleteEvent(ev);
-}
-
-async function deleteEvent(ev) {
-  try {
-    await deleteResource(ev.url);
-    for (const c of calendars) c.events = c.events.filter(x => x.url !== ev.url);
-    drawGrid();
-    renderSidebar(calendars);
-    showToast("Event deleted", "success");
-  } catch (e) {
-    showToast("Delete failed: " + e.message, "error");
+  selectedUrl = ev.url;
+  const detail = $("#cal-detail");
+  if (!detail) return;
+  const pane = findFor({ url: ev.url, doc: ev.doc, forClass: "http://www.w3.org/2002/12/cal/ical#Vevent" });
+  if (!pane) {
+    const d = new Date(ev.doc.dtstart);
+    detail.innerHTML = `<div class="card" style="margin:18px 24px">${escape(ev.doc.summary)} · ${d.toLocaleString("en-GB")}</div>`;
+    return;
   }
+  pane.render({
+    url: ev.url, doc: ev.doc,
+    forClass: "http://www.w3.org/2002/12/cal/ical#Vevent",
+    onChange: () => { drawGrid(); renderSidebar(calendars); },
+    onDelete: () => {
+      for (const c of calendars) c.events = c.events.filter(x => x.url !== ev.url);
+      selectedUrl = null;
+      detail.innerHTML = "";
+      drawGrid();
+      renderSidebar(calendars);
+    },
+  }, detail);
 }
 
 function shortLabel(url, kind) {

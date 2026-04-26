@@ -16,6 +16,7 @@ import {
   fetchTypeIndex, findRegistrations, IMAGE_CLASSES,
   listContainer, getJsonLd, valueOf,
 } from "../pod.js";
+import { findFor } from "../panes.js";
 import { ICON, escape, $, $$, requireSolid } from "../ui.js";
 
 let typeIndex = null;
@@ -161,28 +162,32 @@ function drawGalleries() {
     </div></div>`;
     return;
   }
-  body.innerHTML = galleries.map((g, i) => {
-    if (g.images.length === 0) return ""; // hide empty galleries when others have content
-    return `
-      <div style="padding:18px 22px;border-bottom:1px solid var(--line)">
-        <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:10px">
-          <h3 style="margin:0;font-size:14px;font-weight:600">${escape(g.label)}</h3>
-          <span style="color:var(--text-faint);font-size:11px;font-family:var(--mono)">${g.images.length} image${g.images.length === 1 ? "" : "s"} · ${escape(g.kind)}</span>
-        </div>
-        <div class="photos-grid" style="padding:0">
-          ${g.images.map(img => `
-            <div class="photo" data-src="${escape(img.src)}">
-              <img src="${escape(img.src)}" loading="lazy" alt="${escape(img.title || "")}" />
-              <div class="fade">${escape(img.title || "")}</div>
-            </div>
-          `).join("")}
-        </div>
+  // Render gallery sections; per-image rendering delegates to PhotoPane.
+  body.innerHTML = "";
+  galleries.forEach((g, i) => {
+    if (g.images.length === 0) return; // hide empty galleries when others have content
+    const section = document.createElement("div");
+    section.style.padding = "18px 22px";
+    section.style.borderBottom = "1px solid var(--line)";
+    section.innerHTML = `
+      <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:10px">
+        <h3 style="margin:0;font-size:14px;font-weight:600">${escape(g.label)}</h3>
+        <span style="color:var(--text-faint);font-size:11px;font-family:var(--mono)">${g.images.length} image${g.images.length === 1 ? "" : "s"} · ${escape(g.kind)}</span>
       </div>
     `;
-  }).join("");
-  $$(".photo[data-src]").forEach(el => el.addEventListener("click", () => {
-    window.open(el.dataset.src, "_blank");
-  }));
+    const grid = document.createElement("div");
+    grid.className = "photos-grid";
+    grid.style.padding = "0";
+    section.appendChild(grid);
+    g.images.forEach(img => {
+      const pane = findFor({ src: img.src, title: img.title });
+      const tile = document.createElement("div");
+      grid.appendChild(tile);
+      if (pane) pane.render({ src: img.src, title: img.title }, tile);
+      else tile.outerHTML = `<div class="photo" data-src="${escape(img.src)}"><img src="${escape(img.src)}" loading="lazy"></div>`;
+    });
+    body.appendChild(section);
+  });
 }
 
 function renderSidebar() {

@@ -6,6 +6,7 @@
  */
 
 import { listContainer, hubRoot, discoverStorage } from "../pod.js";
+import { findFor } from "../panes.js";
 import { ICON, escape, fmtBytes, showToast, renderSpinner, renderEmpty, $, $$, requireSolid } from "../ui.js";
 
 let storage = null;
@@ -82,41 +83,18 @@ async function load() {
     return;
   }
 
-  grid.innerHTML = items.map(it => fileCard(it)).join("");
-  $$(".file-card", grid).forEach(el => el.addEventListener("click", () => {
-    const url = el.dataset.url;
-    const type = el.dataset.type;
-    if (type === "container") { currentDir = url; load(); }
-    else window.open(url, "_blank");
-  }));
-}
-
-function fileCard(it) {
-  const isDir = it.type === "container";
-  const name = decodeURIComponent(it.url.replace(/\/$/, "").split("/").pop() || it.url);
-  const cls = isDir ? "dir" : extClass(name);
-  const ico = isDir ? ICON.files : extIcon(name);
-  return `
-    <div class="file-card ${cls}" data-url="${escape(it.url)}" data-type="${it.type}" title="${escape(it.url)}">
-      <div class="fi">${ico}</div>
-      <div class="fn">${escape(name)}</div>
-      <div class="fs">${isDir ? "folder" : ""}</div>
-    </div>
-  `;
-}
-
-function extClass(name) {
-  if (/\.(png|jpe?g|gif|webp|svg)$/i.test(name)) return "img";
-  if (/\.(mp3|ogg|wav|flac)$/i.test(name)) return "audio";
-  if (/\.(jsonld|json|js|css|ttl|n3|xml|html?)$/i.test(name)) return "code";
-  if (/\.(md|txt)$/i.test(name)) return "doc";
-  return "other";
-}
-function extIcon(name) {
-  const c = extClass(name);
-  if (c === "img") return ICON.img;
-  if (c === "code") return ICON.code;
-  return ICON.doc;
+  grid.innerHTML = "";
+  items.forEach(it => {
+    const slot = document.createElement("div");
+    grid.appendChild(slot);
+    const pane = findFor({ url: it.url, type: it.type });
+    const onOpen = (url, type) => {
+      if (type === "container") { currentDir = url; load(); }
+      else window.open(url, "_blank");
+    };
+    if (pane) pane.render({ url: it.url, type: it.type, onOpen }, slot);
+    else slot.outerHTML = `<div class="file-card other"><div class="fi">${ICON.doc}</div><div class="fn">${escape(it.url)}</div></div>`;
+  });
 }
 
 function breadcrumbHTML(url) {
