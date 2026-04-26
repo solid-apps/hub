@@ -8,7 +8,7 @@
  *   - Upcoming events from /hub/calendar/
  */
 
-import { fetchWebIdProfile, listContainer, getJsonLd, hubRoot, discoverStorage, fetchTypeIndex, findRegistrations, TRACKER_CLASS } from "../pod.js";
+import { fetchWebIdProfile, listContainer, getJsonLd, hubRoot, discoverStorage, fetchTypeIndex, findRegistrations, TRACKER_CLASS, NOTE_CLASSES, CALENDAR_CLASSES, IMAGE_CLASSES } from "../pod.js";
 import { ICON, escape, fmtRel, $, $$, avatarHTML } from "../ui.js";
 
 export async function render(container, ctx) {
@@ -104,9 +104,9 @@ export async function render(container, ctx) {
   $$("[data-go]").forEach(el => el.addEventListener("click", () => ctx.switchApp(el.dataset.go)));
 
   loadHomeTasks(ctx);
-  loadHomeEvents(storage);
-  loadHomeNotes(storage);
-  loadHomeStats(storage, ctx);
+  loadHomeEvents(ctx);
+  loadHomeNotes(ctx);
+  loadHomeStats(ctx);
 }
 
 async function loadHomeTasks(ctx) {
@@ -152,22 +152,36 @@ async function loadHomeTasks(ctx) {
   }
 }
 
-async function loadHomeEvents(storage) {
-  if (!storage) return;
+async function loadHomeEvents(ctx) {
+  const list = $("#home-events");
+  if (!list) return;
   try {
-    const dir = hubRoot(storage) + "calendar/";
-    const items = await listContainer(dir);
-    const docs = await Promise.all(items
-      .filter(m => m.type === "resource" && /\.jsonld$/.test(m.url))
-      .map(m => getJsonLd(m.url).catch(() => null))
-    );
+    const ti = await fetchTypeIndex(ctx.auth.id);
+    const regs = ti.registrations.filter(r => CALENDAR_CLASSES.includes(r.forClass) && (r.instance || r.instanceContainer));
+    if (!regs.length) {
+      list.innerHTML = `<div style="color:var(--text-faint);font-size:13px">No calendar registered.</div>`;
+      return;
+    }
+    const events = [];
+    await Promise.all(regs.map(async r => {
+      if (r.instanceContainer) {
+        const items = await listContainer(r.instanceContainer).catch(() => []);
+        await Promise.all(items
+          .filter(it => it.type === "resource" && /\.jsonld$/.test(it.url))
+          .map(async it => {
+            const d = await getJsonLd(it.url).catch(() => null);
+            if (d?.dtstart) events.push(d);
+          }));
+      } else if (r.instance) {
+        const d = await getJsonLd(r.instance.replace(/#.*$/, "")).catch(() => null);
+        if (d?.dtstart) events.push(d);
+      }
+    }));
     const now = new Date();
-    const upcoming = docs.filter(Boolean)
-      .filter(d => d.dtstart && new Date(d.dtstart) >= now)
+    const upcoming = events
+      .filter(d => new Date(d.dtstart) >= now)
       .sort((a, b) => a.dtstart.localeCompare(b.dtstart))
       .slice(0, 4);
-    const list = $("#home-events");
-    if (!list) return;
     if (!upcoming.length) {
       list.innerHTML = `<div style="color:var(--text-faint);font-size:13px">Nothing scheduled.</div>`;
       return;
@@ -180,61 +194,89 @@ async function loadHomeEvents(storage) {
       </div>`;
     }).join("");
   } catch {
-    $("#home-events").innerHTML = `<div style="color:var(--text-faint);font-size:13px">No events yet.</div>`;
+    list.innerHTML = `<div style="color:var(--text-faint);font-size:13px">No events yet.</div>`;
   }
 }
 
-async function loadHomeNotes(storage) {
-  if (!storage) return;
+async function loadHomeNotes(ctx) {
+  const list = $("#home-notes");
+  if (!list) return;
   try {
-    const dir = hubRoot(storage) + "notes/";
-    const items = await listContainer(dir);
-    const docs = await Promise.all(items
-      .filter(m => m.type === "resource" && /\.jsonld$/.test(m.url))
-      .map(async m => ({ url: m.url, doc: await getJsonLd(m.url).catch(() => null) }))
-    );
-    const recent = docs.filter(x => x.doc).sort((a, b) =>
-      (b.doc.datePublished || "").localeCompare(a.doc.datePublished || "")
+    const ti = await fetchTypeIndex(ctx.auth.id);
+    const regs = ti.registrations.filter(r => NOTE_CLASSES.includes(r.forClass) && (r.instance || r.instanceContainer));
+    if (!regs.length) {
+      list.innerHTML = `<div style="color:var(--text-faint);font-size:13px">No notebooks registered.</div>`;
+      return;
+    }
+    const notes = [];
+    await Promise.all(regs.map(async r => {
+      if (r.instanceContainer) {
+        const items = await listContainer(r.instanceContainer).catch(() => []);
+        await Promise.all(items
+          .filter(it => it.type === "resource" && /\.jsonld$/.test(it.url))
+          .map(async it => {
+            const d = await getJsonLd(it.url).catch(() => null);
+            if (d?.headline || d?.text) notes.push(d);
+          }));
+      } else if (r.instance) {
+        const d = await getJsonLd(r.instance.replace(/#.*$/, "")).catch(() => null);
+        if (d) notes.push(d);
+      }
+    }));
+    const recent = notes.sort((a, b) =>
+      (b.datePublished || "").localeCompare(a.datePublished || "")
     ).slice(0, 3);
-    const list = $("#home-notes");
-    if (!list) return;
     if (!recent.length) {
       list.innerHTML = `<div style="color:var(--text-faint);font-size:13px">No notes yet.</div>`;
       return;
     }
-    list.innerHTML = recent.map(x => `
+    list.innerHTML = recent.map(d => `
       <div style="padding:10px 12px;background:var(--bg-elev-2);border-radius:8px;margin-bottom:6px">
-        <div style="font-weight:500;font-size:14px">${escape(x.doc.headline || "(untitled)")}</div>
-        <div style="color:var(--text-dim);font-size:12px;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escape((x.doc.text || "").replace(/[\n#*`>]/g, " ").slice(0, 140))}</div>
-        <div style="color:var(--text-faint);font-size:11px;font-family:var(--mono);margin-top:6px">${escape(fmtRel(x.doc.datePublished))}</div>
+        <div style="font-weight:500;font-size:14px">${escape(d.headline || "(untitled)")}</div>
+        <div style="color:var(--text-dim);font-size:12px;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escape((d.text || "").replace(/[\n#*`>]/g, " ").slice(0, 140))}</div>
+        <div style="color:var(--text-faint);font-size:11px;font-family:var(--mono);margin-top:6px">${escape(fmtRel(d.datePublished))}</div>
       </div>
     `).join("");
   } catch {
-    $("#home-notes").innerHTML = `<div style="color:var(--text-faint);font-size:13px">No notes yet.</div>`;
+    list.innerHTML = `<div style="color:var(--text-faint);font-size:13px">No notes yet.</div>`;
   }
 }
 
-async function loadHomeStats(storage, ctx) {
-  if (!storage) return;
+async function loadHomeStats(ctx) {
+  // All four stats now come from TypeIndex registrations.
+  const el = $("#home-pod-stats");
+  if (!el) return;
   try {
-    const root = hubRoot(storage);
-    // Tasks come from TypeIndex (counts open todos across all discovered trackers)
+    const ti = await fetchTypeIndex(ctx.auth.id);
+    const countContainerOrInstance = async (regs, predicate) => {
+      let n = 0;
+      await Promise.all(regs.map(async r => {
+        if (r.instanceContainer) {
+          const items = await listContainer(r.instanceContainer).catch(() => []);
+          n += items.filter(i => i.type === "resource" && (!predicate || predicate(i.url))).length;
+        } else if (r.instance) {
+          n += 1;
+        }
+      }));
+      return n;
+    };
+    const noteRegs  = ti.registrations.filter(r => NOTE_CLASSES.includes(r.forClass));
+    const evtRegs   = ti.registrations.filter(r => CALENDAR_CLASSES.includes(r.forClass));
+    const imgRegs   = ti.registrations.filter(r => IMAGE_CLASSES.includes(r.forClass));
+    const trkRegs   = ti.registrations.filter(r => r.forClass === TRACKER_CLASS && r.instance);
+
     const tasksPromise = (async () => {
-      try {
-        const ti = await fetchTypeIndex(ctx.auth.id);
-        const regs = findRegistrations(ti, TRACKER_CLASS).filter(r => r.instance);
-        const docs = await Promise.all(regs.map(r => getJsonLd(r.instance.replace(/#.*$/, "")).catch(() => null)));
-        return docs.reduce((sum, d) => sum + (d?.issue?.length || 0), 0);
-      } catch { return 0; }
+      const docs = await Promise.all(trkRegs.map(r => getJsonLd(r.instance.replace(/#.*$/, "")).catch(() => null)));
+      return docs.reduce((sum, d) => sum + (d?.issue?.length || 0), 0);
     })();
+
     const [notes, tasks, events, photos] = await Promise.all([
-      listContainer(root + "notes/").then(items => items.filter(i => i.type === "resource").length).catch(() => 0),
+      countContainerOrInstance(noteRegs, url => /\.jsonld$/.test(url)),
       tasksPromise,
-      listContainer(root + "calendar/").then(items => items.filter(i => i.type === "resource").length).catch(() => 0),
-      listContainer(root + "photos/").then(items => items.filter(i => i.type === "resource").length).catch(() => 0),
+      countContainerOrInstance(evtRegs, url => /\.jsonld$/.test(url)),
+      countContainerOrInstance(imgRegs, url => /\.(png|jpe?g|gif|webp|svg|avif)$/i.test(url)),
     ]);
-    const el = $("#home-pod-stats");
-    if (el) el.innerHTML = `
+    el.innerHTML = `
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
         <div><div style="font-size:18px;font-weight:600;color:var(--text)">${notes}</div><div style="color:var(--text-faint);font-size:11px;text-transform:uppercase;letter-spacing:.06em">notes</div></div>
         <div><div style="font-size:18px;font-weight:600;color:var(--text)">${tasks}</div><div style="color:var(--text-faint);font-size:11px;text-transform:uppercase;letter-spacing:.06em">tasks</div></div>
@@ -242,7 +284,7 @@ async function loadHomeStats(storage, ctx) {
         <div><div style="font-size:18px;font-weight:600;color:var(--text)">${photos}</div><div style="color:var(--text-faint);font-size:11px;text-transform:uppercase;letter-spacing:.06em">photos</div></div>
       </div>`;
   } catch {
-    $("#home-pod-stats").innerHTML = `<div style="color:var(--text-faint)">No stats available.</div>`;
+    el.innerHTML = `<div style="color:var(--text-faint);font-size:13px">No TypeIndex available.</div>`;
   }
 }
 

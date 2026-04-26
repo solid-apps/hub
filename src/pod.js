@@ -237,6 +237,18 @@ export const IMAGE_CLASSES = [
   "http://schema.org/ImageObject",
   "http://xmlns.com/foaf/0.1/Image",
 ];
+
+export const NOTE_CLASSES = [
+  "http://schema.org/TextDocument",
+  "http://schema.org/Article",
+  "http://schema.org/CreativeWork",
+];
+
+export const CALENDAR_CLASSES = [
+  "http://www.w3.org/2002/12/cal/ical#Vcalendar",
+  "http://www.w3.org/2002/12/cal/ical#Vevent",
+  "http://schema.org/Event",
+];
 const SOLID_TERMS = "http://www.w3.org/ns/solid/terms#";
 
 const idOf = (v) => typeof v === "string" ? v : (v && v["@id"]) || null;

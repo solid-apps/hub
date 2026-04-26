@@ -2,7 +2,7 @@
  * Settings — theme, identity, pod info.
  */
 
-import { discoverStorage, hubRoot, fetchTypeIndex, findRegistrations, TRACKER_CLASS } from "../pod.js";
+import { discoverStorage, hubRoot, fetchTypeIndex, findRegistrations, TRACKER_CLASS, NOTE_CLASSES, CALENDAR_CLASSES, IMAGE_CLASSES } from "../pod.js";
 import { logout } from "../auth.js";
 import { ICON, escape, $, $$ } from "../ui.js";
 
@@ -103,11 +103,14 @@ export async function render(container, ctx) {
       ` : ""}
 
       <div class="set-section">
-        <h2>Schema</h2>
-        <div class="set-row"><div><div class="lbl">Notes</div><div class="desc">schema.org TextDocument</div></div><div class="val">/hub/notes/&lt;id&gt;.jsonld</div></div>
-        <div class="set-row"><div><div class="lbl">Tasks</div><div class="desc">wf:Tracker, SolidOS shape #1 (embedded issue array)</div></div><div class="val">/hub/tasks/list.jsonld</div></div>
-        <div class="set-row"><div><div class="lbl">Calendar</div><div class="desc">ical:Vevent</div></div><div class="val">/hub/calendar/&lt;id&gt;.jsonld</div></div>
-        <div class="set-row"><div><div class="lbl">Photos</div><div class="desc">image/* binaries (no JSON-LD wrapper)</div></div><div class="val">/hub/photos/</div></div>
+        <h2>Discovery</h2>
+        <div class="set-row" style="display:block">
+          <div class="desc" style="margin-bottom:10px">Hub doesn't hardcode paths — every app reads from the registrations in your <code>solid:publicTypeIndex</code>. Add a <code>solid:TypeRegistration</code> with one of these <code>forClass</code> values to surface a container or document.</div>
+        </div>
+        <div class="set-row"><div><div class="lbl">Notes</div><div class="desc">${escape(NOTE_CLASSES.join(", "))}</div></div></div>
+        <div class="set-row"><div><div class="lbl">Tasks</div><div class="desc">${escape(TRACKER_CLASS)} (SolidOS shape #1 — embedded issue array)</div></div></div>
+        <div class="set-row"><div><div class="lbl">Calendar</div><div class="desc">${escape(CALENDAR_CLASSES.join(", "))}</div></div></div>
+        <div class="set-row"><div><div class="lbl">Photos</div><div class="desc">${escape(IMAGE_CLASSES.join(", "))}</div></div></div>
       </div>
 
       <div class="set-section">
