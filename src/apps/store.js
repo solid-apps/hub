@@ -227,7 +227,13 @@ let directoryItems = null;
 async function loadDirectory(ctx) {
   const status = $("#store-directory-status");
   try {
-    const r = await fetch(DIRECTORY_URL, { headers: { Accept: "application/ld+json, application/json" } });
+    // cache: no-cache → revalidate with ETag every time, so newly-merged
+    // registry entries appear without a forced reload (gh-pages sets
+    // max-age=600, which would otherwise hide updates for 10 min).
+    const r = await fetch(DIRECTORY_URL, {
+      cache: "no-cache",
+      headers: { Accept: "application/ld+json, application/json" },
+    });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const doc = await r.json();
     const elements = doc["schema:itemListElement"] ?? doc["itemListElement"] ?? [];
