@@ -545,6 +545,52 @@ export async function createGallery({ webid, name }) {
   return { url: containerUrl };
 }
 
+/**
+ * Ensure /hub/bookmarks/ exists and is registered in the TypeIndex with
+ * forClass: bookmark:Bookmark. Idempotent. Returns the container URL.
+ */
+export async function ensureBookmarksContainer(webid) {
+  const storage = await discoverStorage(webid);
+  if (!storage) throw new Error("Couldn't find your pod root");
+  const containerUrl = `${storage}hub/bookmarks/`;
+  await ensureContainer(`${storage}hub/`).catch(() => {});
+  await ensureContainer(containerUrl);
+  const ti = await fetchTypeIndex(webid);
+  const has = ti.registrations.some(r => r.forClass === BOOKMARK_CLASSES[0] && r.instanceContainer);
+  if (!has) {
+    await addTypeRegistration(ti.typeIndexUrl, {
+      forClass: BOOKMARK_CLASSES[0],
+      instanceContainer: containerUrl,
+    });
+  }
+  return containerUrl;
+}
+
+/**
+ * Create one bookmark resource on the pod. Adds a registration if no
+ * Bookmark container is registered yet.
+ */
+export async function createBookmark({ webid, title, url, description }) {
+  const containerUrl = await ensureBookmarksContainer(webid);
+  const slug = slugify(title || new URL(url).hostname) || ("bm-" + Date.now());
+  const docUrl = containerUrl + slug + ".jsonld";
+  const doc = {
+    "@context": {
+      "bookmark": "http://www.w3.org/2002/01/bookmark#",
+      "dc": "http://purl.org/dc/elements/1.1/",
+      "dcterms": "http://purl.org/dc/terms/",
+    },
+    "@id": "#this",
+    "@type": "bookmark:Bookmark",
+    "dc:title": title || url,
+    "bookmark:recalls": { "@id": url },
+    "dc:description": description || "",
+    "dcterms:created": new Date().toISOString(),
+  };
+  await putJsonLd(docUrl, doc);
+  return { url: docUrl + "#this" };
+}
+
 // ---- Pod-stored apps list (urn:solid:App) ----------------------------------
 // The user's "installed apps" live in a single JSON-LD doc on the pod,
 // registered in their TypeIndex with forClass: urn:solid:App. The doc shape
