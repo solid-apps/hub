@@ -1,32 +1,23 @@
 /**
- * Tasks — discovers wf:Tracker resources via the user's solid:publicTypeIndex
- * and renders one card per tracker (same convention as pilot / SolidOS
- * tracker-pane). Edits PUT back to the tracker file via xlogin.authFetch.
+ * Tasks app — discovers wf:Tracker registrations from solid:publicTypeIndex
+ * and delegates per-tracker rendering to the registered pane.
  *
- * Tracker shape (SolidOS convention #1):
- *   {
- *     "@context": { ..., "wf": "http://www.w3.org/2005/01/wf/flow#",
- *                        "ical": "http://www.w3.org/2002/12/cal/ical#" },
- *     "@id": "#this",
- *     "@type": "Tracker",
- *     "title": "...",
- *     "issue": [
- *       { "@type": "Vtodo", "uid": "...", "summary": "...", "status": "open"|"completed", "created": ISO }
- *     ]
- *   }
+ * The app owns the chrome (page header, sidebar, status line); the
+ * pane owns the per-subject UI (kanban card, edits, save). See
+ * src/panes.js for the pane interface.
  */
 
 import {
   fetchTypeIndex, findRegistrations, TRACKER_CLASS,
-  getJsonLd, putJsonLd,
+  getJsonLd,
 } from "../pod.js";
-import { ICON, escape, showToast, renderEmpty, $, $$, debounce, requireSolid } from "../ui.js";
+import { findFor } from "../panes.js";
+import { ICON, escape, $, $$, requireSolid } from "../ui.js";
 
-let typeIndex = null;       // { typeIndexUrl, registrations }
-let trackers = [];          // [{ url, doc }]
-let saveTimers = new Map(); // url → debounced save fn
+let typeIndex = null;
+let trackers = [];   // [{ url, doc, error? }]
 
-export function sidebar(ctx) {
+export function sidebar(_ctx) {
   return `
     <div class="sidebar-head"><h2>Tasks</h2></div>
     <div class="sidebar-body" id="tasks-sb">
@@ -55,10 +46,9 @@ export async function render(container, ctx) {
     $("#tasks-body").innerHTML = `<div class="card" style="color:var(--text-dim)">
       <div style="color:var(--danger);margin-bottom:8px"><strong>Couldn't read your TypeIndex.</strong></div>
       <div style="font-size:13px">${escape(e.message)}</div>
-      <div style="font-size:13px;margin-top:8px">In Settings you'll see whether your WebID points at a <code>solid:publicTypeIndex</code>. Pilot can create one for you if it's missing.</div>
     </div>`;
     $("#tasks-status").textContent = "TypeIndex not available";
-    renderSidebarTrackers();
+    renderSidebar();
     return;
   }
 
@@ -70,14 +60,13 @@ export async function render(container, ctx) {
     $("#tasks-body").innerHTML = `
       <div class="card" style="color:var(--text-dim)">
         No <code>wf:Tracker</code> registrations in your TypeIndex yet.
-        Create one with pilot or solidos — hub-pod will discover and render it next time you visit Tasks.
+        Create one with pilot or solidos — hub will discover and render it next time you visit Tasks.
       </div>
     `;
-    renderSidebarTrackers();
+    renderSidebar();
     return;
   }
 
-  // Fetch all trackers in parallel
   trackers = await Promise.all(regs.map(async r => {
     try {
       const doc = await getJsonLd(r.instance.replace(/#.*$/, ""));
@@ -87,168 +76,33 @@ export async function render(container, ctx) {
     }
   }));
 
-  drawAll();
-  renderSidebarTrackers();
-}
-
-function drawAll() {
+  // Empty out the body and let panes render each tracker into its own slot.
   const body = $("#tasks-body");
-  if (!body) return;
-  body.innerHTML = trackers.map((t, i) => trackerCardHTML(t, i)).join("");
-  trackers.forEach((t, i) => wireTracker(t, i));
-}
-
-function trackerCardHTML(t, idx) {
-  if (!t.doc) {
-    return `<div class="tlist-card" style="border-color:rgba(239,68,68,.3)">
-      <div class="tlist-head">
-        <h2 style="color:var(--danger)">Failed to load tracker</h2>
-      </div>
-      <div style="font-size:12px;color:var(--text-faint);font-family:var(--mono);word-break:break-all">${escape(t.url)}</div>
-      ${t.error ? `<div style="color:var(--danger);font-size:13px;margin-top:8px">${escape(t.error)}</div>` : ""}
-    </div>`;
-  }
-  const items = t.doc.issue || [];
-  const done = items.filter(x => x.status === "completed").length;
-  const total = items.length;
-  const pct = total ? Math.round(done / total * 100) : 0;
-  return `
-    <div class="tlist-card" data-tracker-idx="${idx}">
-      <div class="tlist-head">
-        <h2 contenteditable="true" data-edit-title>${escape(t.doc.title || "Untitled tracker")}</h2>
-        <div class="tlist-progress">${done}/${total} · ${pct}%</div>
-      </div>
-      <div data-rows>
-        ${items.length === 0
-          ? `<div style="color:var(--text-faint);padding:14px 8px;font-size:13px">No items.</div>`
-          : items.map(taskRow).join("")}
-      </div>
-      <div class="task-add">
-        <input data-new placeholder="Add a task and press Enter" />
-        <button class="btn primary" data-add>Add</button>
-      </div>
-      <div style="margin-top:10px;font-size:11px;color:var(--text-faint);font-family:var(--mono);word-break:break-all">${escape(t.url)}</div>
-    </div>
-  `;
-}
-
-function taskRow(t) {
-  const done = t.status === "completed";
-  const uid = t.uid || "";
-  return `
-    <div class="task-row ${done ? "done" : ""}" data-uid="${escape(uid)}">
-      <span class="check" data-check>${ICON.check}</span>
-      <span class="lbl" data-lbl>${escape(t.summary || "(untitled)")}</span>
-      <button class="del" data-del title="Delete">×</button>
-    </div>
-  `;
-}
-
-function wireTracker(t, idx) {
-  if (!t.doc) return;
-  const root = $(`[data-tracker-idx="${idx}"]`);
-  if (!root) return;
-  const save = scheduleSave(t.url);
-
-  // title
-  const titleEl = root.querySelector("[data-edit-title]");
-  titleEl?.addEventListener("blur", () => {
-    const v = titleEl.textContent.trim();
-    if (v && v !== t.doc.title) { t.doc.title = v; save(); }
-  });
-
-  // toggle
-  root.querySelectorAll("[data-check]").forEach(el => el.addEventListener("click", () => {
-    const uid = el.parentNode.dataset.uid;
-    const item = (t.doc.issue || []).find(x => x.uid === uid);
-    if (!item) return;
-    item.status = item.status === "completed" ? "open" : "completed";
-    if (item.status === "completed") item.completed = new Date().toISOString();
-    save();
-    redrawTracker(t, idx);
-  }));
-
-  // edit label
-  root.querySelectorAll("[data-lbl]").forEach(el => el.addEventListener("dblclick", () => {
-    const uid = el.parentNode.dataset.uid;
-    const item = (t.doc.issue || []).find(x => x.uid === uid);
-    if (!item) return;
-    el.innerHTML = `<input type="text" value="${escape(item.summary)}" />`;
-    const input = el.querySelector("input");
-    input.focus(); input.select();
-    const finish = () => {
-      const v = input.value.trim();
-      if (v) item.summary = v;
-      save();
-      redrawTracker(t, idx);
-    };
-    input.addEventListener("blur", finish);
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") { e.preventDefault(); input.blur(); }
-      if (e.key === "Escape") redrawTracker(t, idx);
-    });
-  }));
-
-  // delete
-  root.querySelectorAll("[data-del]").forEach(el => el.addEventListener("click", () => {
-    const uid = el.parentNode.dataset.uid;
-    t.doc.issue = (t.doc.issue || []).filter(x => x.uid !== uid);
-    save();
-    redrawTracker(t, idx);
-  }));
-
-  // add
-  const newInput = root.querySelector("[data-new]");
-  const addBtn = root.querySelector("[data-add]");
-  const addNew = () => {
-    const text = newInput.value.trim();
-    if (!text) return;
-    const uid = "t-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6);
-    t.doc.issue = t.doc.issue || [];
-    t.doc.issue.push({
-      "@type": "Vtodo",
-      uid,
-      summary: text,
-      status: "open",
-      created: new Date().toISOString(),
-    });
-    newInput.value = "";
-    save();
-    redrawTracker(t, idx);
-    setTimeout(() => $(`[data-tracker-idx="${idx}"] [data-new]`)?.focus(), 0);
-  };
-  newInput?.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addNew(); } });
-  addBtn?.addEventListener("click", addNew);
-}
-
-function redrawTracker(t, idx) {
-  const root = $(`[data-tracker-idx="${idx}"]`);
-  if (!root) return;
-  // Replace just this card to avoid losing focus elsewhere
-  const html = trackerCardHTML(t, idx);
-  const tmp = document.createElement("div");
-  tmp.innerHTML = html;
-  root.replaceWith(tmp.firstElementChild);
-  wireTracker(t, idx);
-}
-
-function scheduleSave(url) {
-  if (saveTimers.has(url)) return saveTimers.get(url);
-  const fn = debounce(async () => {
-    const t = trackers.find(x => x.url === url);
-    if (!t || !t.doc) return;
-    try {
-      // Strip the fragment from the PUT URL — we PUT the document, not the subject
-      await putJsonLd(url.replace(/#.*$/, ""), t.doc);
-    } catch (e) {
-      showToast("Save failed: " + e.message, "error");
+  body.innerHTML = "";
+  for (let i = 0; i < trackers.length; i++) {
+    const t = trackers[i];
+    const slot = document.createElement("div");
+    slot.dataset.trackerIdx = i;
+    body.appendChild(slot);
+    const pane = findFor({ url: t.url, doc: t.doc, forClass: TRACKER_CLASS });
+    if (pane) {
+      try {
+        await pane.render({ url: t.url, doc: t.doc, forClass: TRACKER_CLASS }, slot, ctx);
+      } catch (e) {
+        slot.innerHTML = `<div class="card" style="color:var(--danger)">Pane error: ${escape(e.message)}</div>`;
+      }
+    } else {
+      slot.innerHTML = `<div class="card" style="color:var(--text-dim)">
+        No pane registered for <code>${escape(TRACKER_CLASS)}</code>.
+        <div style="margin-top:6px;font-size:12px;color:var(--text-faint);font-family:var(--mono);word-break:break-all">${escape(t.url)}</div>
+      </div>`;
     }
-  }, 500);
-  saveTimers.set(url, fn);
-  return fn;
+  }
+
+  renderSidebar();
 }
 
-function renderSidebarTrackers() {
+function renderSidebar() {
   const sb = $("#tasks-sb");
   if (!sb) return;
   if (!typeIndex) {

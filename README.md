@@ -39,6 +39,27 @@ Open `http://localhost:8080/`. Click the floating Login button (xlogin) to sign 
 | Activity   | feed       | (synthesized)             | —                       |
 | Settings   | UI         | `/hub/prefs.jsonld`       | hub: namespace          |
 
+## Pane convention
+
+Apps own chrome and discovery; per-subject rendering is delegated to **panes**. A pane is a small module:
+
+```js
+export const meta = { id, name, forClass };          // optional, for debugging
+
+export function canHandle(input) { /* boolean */ }   // input: { url, doc, forClass }
+export async function render(input, container, ctx); // emit DOM into container
+```
+
+Built-in panes live under `src/panes/`. To plug in a new one:
+
+```js
+import { register } from './panes.js';
+import * as MyPane from './panes/my-pane.js';
+register(MyPane);
+```
+
+Apps look up a pane per discovered subject via `findFor(input)`. This lets external LOSOS-style panes (e.g. swap in pilot's `tracker-pane.js` for kanban + drag-drop) replace the built-in renderers without touching the app shells.
+
 ## License
 
 AGPL-3.0-or-later.
