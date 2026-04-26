@@ -5,7 +5,22 @@
 import { discoverStorage, hubRoot, fetchTypeIndex, findRegistrations, TRACKER_CLASS, NOTE_CLASSES, CALENDAR_CLASSES, IMAGE_CLASSES } from "../pod.js";
 import { logout } from "../auth.js";
 import { ICON, escape, $, $$, showToast } from "../ui.js";
-import { listRegistered, listExternal, loadAndRegister } from "../panes.js";
+import { listRegistered, listExternal, loadAndRegister, getClassDefaults, setClassDefault } from "../panes.js";
+
+// Hosts considered "trusted" — no confirm prompt before loading a pane URL.
+// Anything else triggers a warning since panes get full DOM + xlogin access.
+const TRUSTED_HOSTS = new Set(["solid-apps.github.io", "localhost", "127.0.0.1"]);
+function confirmLoad(url) {
+  let host;
+  try { host = new URL(url).hostname; }
+  catch { return confirm(`Load this URL?\n\n${url}\n\nOnly proceed if you trust the source — panes get full DOM + xlogin access.`); }
+  if (TRUSTED_HOSTS.has(host)) return true;
+  return confirm(
+    `Load and run code from ${host}?\n\n` +
+    `Panes have full access to your DOM and to your pod (via xlogin.authFetch).\n` +
+    `Only load URLs you trust.`
+  );
+}
 
 export async function render(container, ctx) {
   let storage = null;
@@ -45,6 +60,12 @@ export async function render(container, ctx) {
           <div class="lbl" style="margin-bottom:10px">Registered panes</div>
           <div class="desc" style="margin-bottom:12px">Built-in panes are loaded at boot from <code>src/panes/</code>. External panes are loaded on demand via <code>urn:solid:view</code> on a TypeRegistration. First-match wins inside <code>findFor()</code>; <code>urn:solid:view</code> takes precedence over both via <code>resolveFor()</code>.</div>
           <div id="panes-registered-list" style="background:var(--bg-elev-2);padding:10px 14px;border-radius:8px;border:1px solid var(--line);font-family:var(--mono);font-size:12px;line-height:1.6"></div>
+        </div>
+
+        <div class="set-row" style="display:block">
+          <div class="lbl" style="margin-bottom:10px">Default pane per class</div>
+          <div class="desc" style="margin-bottom:12px">When two or more panes can render the same RDF class, pick which one wins. Stored in localStorage. Pinning to a pane that's not currently loaded falls through to the next match.</div>
+          <div id="panes-defaults-list" style="display:flex;flex-direction:column;gap:8px"></div>
         </div>
 
         <div class="set-row" style="display:block">
@@ -179,6 +200,7 @@ export async function render(container, ctx) {
   $("#pane-load-btn")?.addEventListener("click", async () => {
     const url = $("#pane-load-url")?.value.trim();
     if (!url) return;
+    if (!confirmLoad(url)) return;
     const btn = $("#pane-load-btn");
     btn.disabled = true; btn.textContent = "Loading…";
     try {
@@ -197,9 +219,9 @@ export async function render(container, ctx) {
 }
 
 function drawPanesLists() {
+  const panes = listRegistered();
   const reg = $("#panes-registered-list");
   if (reg) {
-    const panes = listRegistered();
     reg.innerHTML = panes.length === 0
       ? `<div style="color:var(--text-faint)">No panes registered.</div>`
       : panes.map((p, i) => `
@@ -211,6 +233,42 @@ function drawPanesLists() {
           </div>
         `).join("");
   }
+
+  // Class → which panes claim it (via meta.forClass / meta.forClasses).
+  // Only classes with 2+ candidates get a picker; single-pane classes
+  // would just show "auto + the one pane" which conveys no useful choice.
+  const coverage = new Map();
+  for (const p of panes) {
+    const classes = [];
+    if (typeof p.forClass === "string") classes.push(p.forClass);
+    if (Array.isArray(p.forClasses)) classes.push(...p.forClasses);
+    for (const c of classes) {
+      if (!coverage.has(c)) coverage.set(c, []);
+      coverage.get(c).push(p);
+    }
+  }
+  const defaults = getClassDefaults();
+  const picker = $("#panes-defaults-list");
+  if (picker) {
+    const multi = [...coverage.entries()].filter(([, ps]) => ps.length > 1);
+    if (multi.length === 0) {
+      picker.innerHTML = `<div style="color:var(--text-faint);font-size:13px">All classes currently have one pane each. Load another (URL box below, or via <code>urn:solid:view</code>) to enable picking.</div>`;
+    } else {
+      picker.innerHTML = multi.map(([cls, ps]) => `
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <code style="font-size:12px;color:var(--text-dim);word-break:break-all;flex:1;min-width:200px">${escape(cls)}</code>
+          <select data-default-class="${escape(cls)}" style="background:var(--bg-elev-2);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font:inherit;font-size:13px;color:var(--text)">
+            <option value="">auto · ${escape(ps[0].name || ps[0].id)}</option>
+            ${ps.map(p => `<option value="${escape(p.id)}" ${defaults[cls] === p.id ? "selected" : ""}>${escape(p.name || p.id)}</option>`).join("")}
+          </select>
+        </div>
+      `).join("");
+      $$("[data-default-class]", picker).forEach(el => el.addEventListener("change", () => {
+        setClassDefault(el.dataset.defaultClass, el.value || null);
+      }));
+    }
+  }
+
   const ext = $("#panes-external-list");
   if (ext) {
     const cached = listExternal();

@@ -27,6 +27,22 @@
 
 const registry = [];
 
+// Per-class user preferences: { classIRI: paneId }. Persisted in localStorage
+// so the choice survives reloads. Pane id matches what `meta.id` returns
+// from listRegistered() — could be a built-in id like "hub-pod/tracker" or
+// a URL for externally loaded panes.
+let classDefaults = {};
+try { classDefaults = JSON.parse(localStorage.getItem("hubpod-pane-defaults") || "{}"); }
+catch { classDefaults = {}; }
+
+export function getClassDefaults() { return { ...classDefaults }; }
+export function setClassDefault(classIRI, paneId) {
+  if (!classIRI) return;
+  if (paneId) classDefaults[classIRI] = paneId;
+  else delete classDefaults[classIRI];
+  localStorage.setItem("hubpod-pane-defaults", JSON.stringify(classDefaults));
+}
+
 export function register(pane) {
   if (!pane || typeof pane.canHandle !== "function" || typeof pane.render !== "function") {
     console.warn("panes.register: ignored — pane must export canHandle + render", pane);
@@ -36,6 +52,17 @@ export function register(pane) {
 }
 
 export function findFor(input) {
+  // 1. User pinned a specific pane for this class → honour it (if it
+  //    exists in the registry and still claims canHandle).
+  const pinnedId = input?.forClass && classDefaults[input.forClass];
+  if (pinnedId) {
+    const p = registry.find(x => x.meta?.id === pinnedId);
+    if (p) {
+      try { if (p.canHandle(input)) return p; }
+      catch (e) { console.warn("pinned pane canHandle threw:", pinnedId, e); }
+    }
+  }
+  // 2. Fallback: registration order, first match wins.
   for (const p of registry) {
     try { if (p.canHandle(input)) return p; }
     catch (e) { console.warn("pane.canHandle threw:", p.meta?.id, e); }
@@ -121,7 +148,10 @@ export async function loadAndRegister(url) {
 export function adapt(obj, idOrUrl) {
   if (!obj || typeof obj.canHandle !== "function" || typeof obj.render !== "function") return null;
   const losos = obj.render.length >= 4 || obj.canHandle.length >= 2;
+  // LOSOS panes export `label` (e.g. 'Tasks') instead of meta.name. Use it
+  // as a fallback so the picker shows a friendly name, not "LOSOS pane (...)".
   const baseMeta = { id: idOrUrl, ...(obj.meta || {}) };
+  if (!baseMeta.name && typeof obj.label === "string") baseMeta.name = obj.label;
   if (!losos) {
     return { meta: baseMeta, canHandle: obj.canHandle, render: obj.render };
   }
