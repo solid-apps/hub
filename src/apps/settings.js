@@ -31,6 +31,17 @@ export async function render(container, ctx) {
       </div>
 
       <div class="set-section">
+        <h2>Panes</h2>
+        <div class="set-row">
+          <div>
+            <div class="lbl">Use pilot's Tracker pane</div>
+            <div class="desc">Loads <a href="https://solid-apps.github.io/pilot/tracker-pane.js" target="_blank" style="color:var(--accent)">pilot's tracker-pane.js</a> for Tasks (drag-drop kanban, Preact). Different look from the built-in pane. Reload the page after toggling.</div>
+          </div>
+          <div class="toggle ${localStorage.getItem("hubpod-use-pilot-tracker") === "1" ? "on" : ""}" id="pilot-toggle"><div class="knob"></div></div>
+        </div>
+      </div>
+
+      <div class="set-section">
         <h2>Identity</h2>
         ${ctx.auth.loggedIn ? `
           <div class="set-row">
@@ -128,6 +139,16 @@ export async function render(container, ctx) {
     document.documentElement.setAttribute("data-theme", next);
     localStorage.setItem("hubpod-theme", next);
     render(container, ctx); // re-render to flip the toggle
+  });
+  $("#pilot-toggle")?.addEventListener("click", () => {
+    const cur = localStorage.getItem("hubpod-use-pilot-tracker") === "1";
+    if (cur) localStorage.removeItem("hubpod-use-pilot-tracker");
+    else localStorage.setItem("hubpod-use-pilot-tracker", "1");
+    if (confirm((cur ? "Disabling" : "Enabling") + " pilot's Tracker pane requires a reload. Reload now?")) {
+      window.location.reload();
+    } else {
+      render(container, ctx);
+    }
   });
   $("#logout-btn")?.addEventListener("click", () => logout());
 }

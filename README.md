@@ -58,7 +58,9 @@ import * as MyPane from './panes/my-pane.js';
 register(MyPane);
 ```
 
-Apps look up a pane per discovered subject via `findFor(input)`. This lets external LOSOS-style panes (e.g. swap in pilot's `tracker-pane.js` for kanban + drag-drop) replace the built-in renderers without touching the app shells.
+Apps look up a pane per discovered subject via `findFor(input)`. The first registered pane whose `canHandle` returns true wins, so registering an external pane *before* the built-in one swaps the renderer without touching the app shell.
+
+`src/panes/pilot-tracker.js` is a worked example: it lazy-loads pilot's `tracker-pane.js` (a LOSOS-style Preact pane), adapts hub-pod's input shape to pilot's `render(subject, store, container, rawData)`, and replaces the built-in tracker pane when toggled on in Settings → Panes. The pilot pane brings its own `.tp-*` styles, so it looks different — that's intentional.
 
 ## License
 

@@ -19,13 +19,20 @@ import * as Settings from "./apps/settings.js";
 
 // Register built-in panes. External panes can register themselves via
 // import('./panes.js').then(m => m.register(myPane)).
-import * as TrackerPane from "./panes/tracker.js";
-import * as NotePane    from "./panes/note.js";
-import * as EventPane   from "./panes/event.js";
-import * as PhotoPane   from "./panes/photo.js";
-import * as PersonPane  from "./panes/person.js";
-import * as FilePane    from "./panes/file.js";
+import * as TrackerPane      from "./panes/tracker.js";
+import * as PilotTrackerPane from "./panes/pilot-tracker.js";
+import * as NotePane         from "./panes/note.js";
+import * as EventPane        from "./panes/event.js";
+import * as PhotoPane        from "./panes/photo.js";
+import * as PersonPane       from "./panes/person.js";
+import * as FilePane         from "./panes/file.js";
 import { register as registerPane } from "./panes.js";
+
+// Opt-in alternative: register pilot's tracker pane FIRST so findFor
+// returns it before our built-in. Toggle in Settings.
+if (localStorage.getItem("hubpod-use-pilot-tracker") === "1") {
+  registerPane(PilotTrackerPane);
+}
 registerPane(TrackerPane);
 registerPane(NotePane);
 registerPane(EventPane);

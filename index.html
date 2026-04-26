@@ -6,6 +6,18 @@
 <title>hub-pod · your Solid workspace</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%237c5cff' d='M10 13a5 5 0 0 1 0-7l3-3a5 5 0 0 1 7 7l-1.5 1.5M14 11a5 5 0 0 1 0 7l-3 3a5 5 0 0 1-7-7l1.5-1.5'/%3E%3C/svg%3E" />
 <link rel="stylesheet" href="./style.css" />
+<!-- Importmap: only used by external panes that bring Preact/htm with them
+     (e.g. pilot's tracker-pane.js). Hub's own modules are pure ESM with
+     relative paths — they don't depend on these. -->
+<script type="importmap">
+{
+  "imports": {
+    "preact":       "https://esm.sh/preact@10.19.0",
+    "preact/hooks": "https://esm.sh/preact@10.19.0/hooks",
+    "htm":          "https://esm.sh/htm@3.1.1"
+  }
+}
+</script>
 </head>
 <body>
   <div class="shell">
