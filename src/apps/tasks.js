@@ -9,10 +9,10 @@
 
 import {
   fetchTypeIndex, findRegistrations, TRACKER_CLASS,
-  getJsonLd,
+  getJsonLd, createTracker,
 } from "../pod.js";
 import { resolveFor } from "../panes.js";
-import { ICON, escape, $, $$, requireSolid } from "../ui.js";
+import { ICON, escape, $, $$, requireSolid, showToast } from "../ui.js";
 
 let typeIndex = null;
 let trackers = [];   // [{ url, doc, error? }]
@@ -35,9 +35,11 @@ export async function render(container, ctx) {
         <h2 style="margin:0;font-size:22px;letter-spacing:-.01em">Tasks</h2>
         <div id="tasks-status" style="color:var(--text-dim);font-size:13px;margin-top:4px">Discovering trackers…</div>
       </div>
+      <button class="btn primary" id="new-tracker-btn">${ICON.plus} New tracker</button>
     </div>
     <div id="tasks-body"><div class="spinner"></div></div>
   </div></div>`;
+  $("#new-tracker-btn").addEventListener("click", () => promptCreate(ctx));
 
   trackers = [];
   try {
@@ -58,11 +60,13 @@ export async function render(container, ctx) {
 
   if (!regs.length) {
     $("#tasks-body").innerHTML = `
-      <div class="card" style="color:var(--text-dim)">
-        No <code>wf:Tracker</code> registrations in your TypeIndex yet.
-        Create one with pilot or solidos — hub will discover and render it next time you visit Tasks.
+      <div class="card" style="color:var(--text-dim);text-align:center;padding:32px 24px">
+        <div style="font-size:15px;color:var(--text);margin-bottom:6px">No trackers yet.</div>
+        <div style="font-size:13px;margin-bottom:18px">Hub will create the file under <code>/public/tracker/</code> on your pod and register it in your TypeIndex.</div>
+        <button class="btn primary" id="empty-new-tracker-btn">${ICON.plus} Create your first tracker</button>
       </div>
     `;
+    $("#empty-new-tracker-btn").addEventListener("click", () => promptCreate(ctx));
     renderSidebar();
     return;
   }
@@ -151,6 +155,20 @@ function shortenUrl(u) {
     const x = new URL(u);
     return x.hostname + x.pathname.replace(/\/$/, "");
   } catch { return u; }
+}
+
+async function promptCreate(ctx) {
+  const name = prompt("Tracker name (e.g. \"Work\", \"Groceries\"):");
+  if (!name || !name.trim()) return;
+  showToast("Creating tracker…");
+  try {
+    await createTracker({ webid: ctx.auth.id, name: name.trim() });
+    showToast("Tracker created", "success");
+    // Re-render Tasks
+    ctx.switchApp("tasks");
+  } catch (e) {
+    showToast("Create failed: " + e.message, "error");
+  }
 }
 
 export const meta = { name: "Tasks", icon: ICON.tasks, hasSidebar: true };

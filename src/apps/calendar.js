@@ -9,6 +9,7 @@
 import {
   fetchTypeIndex, CALENDAR_CLASSES,
   listContainer, getJsonLd, putJsonLd, deleteResource,
+  createCalendar,
 } from "../pod.js";
 import { findFor } from "../panes.js";
 import { ICON, escape, showToast, renderEmpty, $, $$, requireSolid } from "../ui.js";
@@ -66,16 +67,14 @@ export async function render(container, ctx) {
   if (!regs.length) {
     $("#cal-grid").innerHTML = "";
     $("#cal-message").innerHTML = `
-      <div class="card" style="color:var(--text-dim);margin-top:18px">
-        <strong>No calendar registered.</strong>
-        <p style="margin:8px 0 0;font-size:14px;line-height:1.6">
-          To make events appear here, add a TypeRegistration to your <code>${escape(typeIndex.typeIndexUrl)}</code> pointing at an LDP container of <code>ical:Vevent</code> JSON-LD files (or a single iCalendar). The <code>forClass</code> can be any of:
-        </p>
-        <ul style="font-family:var(--mono);font-size:12px;color:var(--text-dim);margin:8px 0 0;padding-left:22px">
-          ${CALENDAR_CLASSES.map(c => `<li>${escape(c)}</li>`).join("")}
-        </ul>
+      <div class="card" style="color:var(--text-dim);margin:18px 0;text-align:center;padding:32px 24px">
+        <div style="font-size:15px;color:var(--text);margin-bottom:6px">No calendar yet.</div>
+        <div style="font-size:13px;margin-bottom:18px">Hub will create a container under <code>/hub/calendar/</code> on your pod and register it as an <code>ical:Vcalendar</code> instance container in your TypeIndex.</div>
+        <button class="btn primary" id="empty-new-cal-btn">${ICON.plus} Create your first calendar</button>
+        <div style="margin-top:18px;font-size:12px;color:var(--text-faint)">Or add a TypeRegistration manually with one of: ${CALENDAR_CLASSES.map(c => `<code>${escape(c)}</code>`).join(", ")}</div>
       </div>
     `;
+    $("#empty-new-cal-btn").addEventListener("click", () => promptCreateCalendar(ctx));
     renderSidebar([]);
     return;
   }
@@ -309,6 +308,19 @@ function renderTypeIndexError(e) {
   $("#cal-grid").innerHTML = "";
   const sb = $("#cal-sb");
   if (sb) sb.innerHTML = `<div style="padding:14px;color:var(--text-faint);font-size:13px">${escape(e.message)}</div>`;
+}
+
+async function promptCreateCalendar(ctx) {
+  const name = prompt("Calendar name (e.g. \"Personal\", \"Work\"):");
+  if (!name || !name.trim()) return;
+  showToast("Creating calendar…");
+  try {
+    await createCalendar({ webid: ctx.auth.id, name: name.trim() });
+    showToast("Calendar created", "success");
+    ctx.switchApp("calendar");
+  } catch (e) {
+    showToast("Create failed: " + e.message, "error");
+  }
 }
 
 export const meta = { name: "Calendar", icon: ICON.calendar, hasSidebar: true };

@@ -55,6 +55,39 @@ export async function putJsonLd(url, body) {
   return res;
 }
 
+/**
+ * Safe PUT for resources that may be served as text/html with a JSON-LD
+ * island (SolidOS-style WebIDs like melvin.me). GETs the URL first, and:
+ *   - if text/html → splices the new doc into the <script type="application/ld+json">
+ *     island and PUTs the entire HTML back with Content-Type: text/html,
+ *     preserving every byte outside the island
+ *   - otherwise → falls through to a normal JSON-LD PUT
+ *
+ * Costs one extra GET per save. Only worth using on resources that
+ * might be HTML (mainly WebID documents) — JSON-LD-native resources
+ * we created (hub/notes, public/tracker, etc.) should stick with putJsonLd.
+ */
+export async function putJsonLdSmart(url, body) {
+  const head = await authFetch(url, { headers: { Accept: "text/html, application/ld+json" } });
+  if (!head.ok) throw new Error(`GET (for safe PUT) ${head.status} ${head.statusText} (${url})`);
+  const ct = (head.headers.get("content-type") || "").toLowerCase();
+  if (ct.includes("text/html")) {
+    const html = await head.text();
+    const islandRe = /(<script\s+type=["']application\/ld\+json["']\s*>)([\s\S]*?)(<\/script>)/i;
+    if (!islandRe.test(html)) throw new Error("HTML response with no JSON-LD island — refusing to overwrite");
+    const newJson = "\n" + JSON.stringify(body, null, 2) + "\n";
+    const newHtml = html.replace(islandRe, (_, open, _old, close) => open + newJson + close);
+    const res = await authFetch(url, {
+      method: "PUT",
+      headers: { "Content-Type": "text/html" },
+      body: newHtml,
+    });
+    if (!res.ok) throw new Error(`PUT (HTML, island-preserved) ${res.status} ${res.statusText}`);
+    return res;
+  }
+  return putJsonLd(url, body);
+}
+
 export async function deleteResource(url) {
   const res = await authFetch(url, { method: "DELETE" });
   if (!res.ok && res.status !== 404) throw new Error(`DELETE ${res.status} ${res.statusText} (${url})`);
@@ -311,6 +344,110 @@ export async function fetchTypeIndex(webid) {
 export function findRegistrations(typeIndex, classIri) {
   if (!typeIndex) return [];
   return typeIndex.registrations.filter(r => r.forClass === classIri);
+}
+
+// ---- Mutating the TypeIndex ----------------------------------------------
+
+/**
+ * Add a solid:TypeRegistration to the TypeIndex at `typeIndexUrl`.
+ * Tries the common locations: schema:itemListElement (SolidOS shape),
+ * @graph (some pods), or top-level (last resort).
+ *
+ * Returns the new registration's local @id (e.g. "#reg-abcd12").
+ */
+export async function addTypeRegistration(typeIndexUrl, { forClass, instance, instanceContainer }) {
+  const doc = await getJsonLd(typeIndexUrl);
+  if (!doc) throw new Error(`TypeIndex not found at ${typeIndexUrl}`);
+  const id = "#reg-" + Math.random().toString(36).slice(2, 9);
+  const reg = {
+    "@id": id,
+    "@type": "solid:TypeRegistration",
+    "solid:forClass": { "@id": forClass },
+  };
+  if (instance) reg["solid:instance"] = { "@id": instance };
+  if (instanceContainer) reg["solid:instanceContainer"] = { "@id": instanceContainer };
+
+  if (Array.isArray(doc["schema:itemListElement"])) {
+    doc["schema:itemListElement"].push(reg);
+  } else if (Array.isArray(doc["@graph"])) {
+    doc["@graph"].push(reg);
+  } else {
+    doc["schema:itemListElement"] = [reg];
+  }
+  await putJsonLd(typeIndexUrl, doc);
+  return id;
+}
+
+// ---- Per-app create helpers ----------------------------------------------
+// Each one creates the resource on the pod and registers it in the user's
+// publicTypeIndex so hub's discovery picks it up next render.
+
+function slugify(s) {
+  return String(s || "").toLowerCase()
+    .replace(/[^\w\s-]/g, "").replace(/\s+/g, "-").replace(/-+/g, "-")
+    .replace(/^-|-$/g, "").slice(0, 60);
+}
+
+export async function createTracker({ webid, name }) {
+  const slug = slugify(name);
+  if (!slug) throw new Error("Invalid name");
+  const storage = await discoverStorage(webid);
+  if (!storage) throw new Error("Couldn't find your pod root");
+  const ti = await fetchTypeIndex(webid);
+  await ensureContainer(storage + "public/tracker/").catch(() => {});
+  const dataUrl = `${storage}public/tracker/${slug}-data.jsonld`;
+  const seed = {
+    "@context": { "@vocab": "https://w3id.org/workflow#", ical: "http://www.w3.org/2002/12/cal/ical#" },
+    "@id": "#this",
+    "@type": "Tracker",
+    title: name,
+    issue: [],
+  };
+  await putJsonLd(dataUrl, seed);
+  await addTypeRegistration(ti.typeIndexUrl, { forClass: TRACKER_CLASS, instance: dataUrl + "#this" });
+  return { url: dataUrl + "#this" };
+}
+
+export async function createNotebook({ webid, name }) {
+  const slug = slugify(name);
+  if (!slug) throw new Error("Invalid name");
+  const storage = await discoverStorage(webid);
+  if (!storage) throw new Error("Couldn't find your pod root");
+  const ti = await fetchTypeIndex(webid);
+  const containerUrl = `${storage}hub/notes/${slug}/`;
+  await ensureContainer(`${storage}hub/`).catch(() => {});
+  await ensureContainer(`${storage}hub/notes/`).catch(() => {});
+  await ensureContainer(containerUrl);
+  await addTypeRegistration(ti.typeIndexUrl, { forClass: NOTE_CLASSES[0], instanceContainer: containerUrl });
+  return { url: containerUrl };
+}
+
+export async function createCalendar({ webid, name }) {
+  const slug = slugify(name);
+  if (!slug) throw new Error("Invalid name");
+  const storage = await discoverStorage(webid);
+  if (!storage) throw new Error("Couldn't find your pod root");
+  const ti = await fetchTypeIndex(webid);
+  const containerUrl = `${storage}hub/calendar/${slug}/`;
+  await ensureContainer(`${storage}hub/`).catch(() => {});
+  await ensureContainer(`${storage}hub/calendar/`).catch(() => {});
+  await ensureContainer(containerUrl);
+  await addTypeRegistration(ti.typeIndexUrl, { forClass: CALENDAR_CLASSES[0], instanceContainer: containerUrl });
+  return { url: containerUrl };
+}
+
+export async function createGallery({ webid, name }) {
+  const slug = slugify(name);
+  if (!slug) throw new Error("Invalid name");
+  const storage = await discoverStorage(webid);
+  if (!storage) throw new Error("Couldn't find your pod root");
+  const ti = await fetchTypeIndex(webid);
+  const containerUrl = `${storage}hub/photos/${slug}/`;
+  await ensureContainer(`${storage}hub/`).catch(() => {});
+  await ensureContainer(`${storage}hub/photos/`).catch(() => {});
+  await ensureContainer(containerUrl);
+  await addTypeRegistration(ti.typeIndexUrl, { forClass: IMAGE_CLASSES[0], instanceContainer: containerUrl });
+  return { url: containerUrl };
 }
 
 /** Convert a fetcher 404 to null at higher level. Internal use. */

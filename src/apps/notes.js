@@ -7,6 +7,7 @@
 import {
   fetchTypeIndex, NOTE_CLASSES,
   listContainer, getJsonLd, putJsonLd,
+  createNotebook,
 } from "../pod.js";
 import { findFor } from "../panes.js";
 import { ICON, escape, fmtRel, showToast, $, $$, requireSolid } from "../ui.js";
@@ -30,6 +31,7 @@ export function sidebar(_ctx) {
 
 export async function render(container, ctx) {
   if (requireSolid(container, ctx, "Notes discovers notebooks via solid:publicTypeIndex.")) return;
+  lastCtx = ctx;
 
   container.innerHTML = `<div class="content"><div class="notes-layout">
     <div class="notes-list" id="notes-list"><div class="spinner"></div></div>
@@ -46,7 +48,11 @@ export async function render(container, ctx) {
   const regs = typeIndex.registrations.filter(r =>
     NOTE_CLASSES.includes(r.forClass) && (r.instance || r.instanceContainer)
   );
-  if (!regs.length) { renderNoRegistrations(); return; }
+  if (!regs.length) {
+    renderNoRegistrations();
+    $("#empty-new-notebook-btn")?.addEventListener("click", () => promptCreateNotebook(ctx));
+    return;
+  }
 
   notebooks = await Promise.all(regs.map(resolveNotebook));
 
@@ -169,12 +175,17 @@ function renderSidebar() {
           <span class="count">${nb.notes.length}</span>
         </button>
       `).join("")}
+      <button class="sb-item" id="new-notebook-btn" style="color:var(--accent)">
+        ${ICON.plus}
+        <span>New notebook</span>
+      </button>
     </div>
     <div class="sb-section">
       <div class="sb-label">TypeIndex</div>
       <div style="padding:6px 18px;font-size:11px;font-family:var(--mono);color:var(--text-faint);word-break:break-all">${escape(typeIndex.typeIndexUrl)}</div>
     </div>
   `;
+  $("#new-notebook-btn")?.addEventListener("click", () => promptCreateNotebook(lastCtx));
 }
 
 let lastCtx = null;
@@ -267,14 +278,11 @@ function renderTypeIndexError(e) {
 function renderNoRegistrations() {
   $("#notes-list").innerHTML = "";
   $("#note-reader").innerHTML = `
-    <div class="card" style="color:var(--text-dim);max-width:640px">
-      <strong>No notebook registered.</strong>
-      <p style="margin:8px 0 0;font-size:14px;line-height:1.6">
-        To make notes appear here, add a TypeRegistration to your <code>${escape(typeIndex.typeIndexUrl)}</code> pointing at a notebook container or single note. The <code>forClass</code> can be any of:
-      </p>
-      <ul style="font-family:var(--mono);font-size:12px;color:var(--text-dim);margin:8px 0 0;padding-left:22px">
-        ${NOTE_CLASSES.map(c => `<li>${escape(c)}</li>`).join("")}
-      </ul>
+    <div class="card" style="color:var(--text-dim);max-width:640px;text-align:center;padding:32px 24px">
+      <div style="font-size:15px;color:var(--text);margin-bottom:6px">No notebooks yet.</div>
+      <div style="font-size:13px;margin-bottom:18px">Hub will create a container under <code>/hub/notes/</code> on your pod and register it as a <code>schema:TextDocument</code> instance container in your TypeIndex.</div>
+      <button class="btn primary" id="empty-new-notebook-btn">${ICON.plus} Create your first notebook</button>
+      <div style="margin-top:18px;font-size:12px;color:var(--text-faint)">Or add a TypeRegistration manually with one of: ${NOTE_CLASSES.map(c => `<code>${escape(c)}</code>`).join(", ")}</div>
     </div>
   `;
   const sb = $("#notes-sb");
@@ -289,6 +297,20 @@ function renderNoRegistrations() {
         <div style="padding:6px 18px;font-size:11px;font-family:var(--mono);color:var(--text-faint);word-break:break-all">${escape(typeIndex.typeIndexUrl)}</div>
       </div>
     `;
+  }
+}
+
+async function promptCreateNotebook(ctx) {
+  if (!ctx) return;
+  const name = prompt("Notebook name (e.g. \"Daily\", \"Ideas\"):");
+  if (!name || !name.trim()) return;
+  showToast("Creating notebook…");
+  try {
+    await createNotebook({ webid: ctx.auth.id, name: name.trim() });
+    showToast("Notebook created", "success");
+    ctx.switchApp("notes");
+  } catch (e) {
+    showToast("Create failed: " + e.message, "error");
   }
 }
 

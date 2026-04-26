@@ -15,9 +15,10 @@
 import {
   fetchTypeIndex, findRegistrations, IMAGE_CLASSES,
   listContainer, getJsonLd, valueOf,
+  createGallery,
 } from "../pod.js";
 import { findFor } from "../panes.js";
-import { ICON, escape, $, $$, requireSolid } from "../ui.js";
+import { ICON, escape, $, $$, requireSolid, showToast } from "../ui.js";
 
 let typeIndex = null;
 let galleries = [];   // [{ url, label, images: [{src, title?}] }]
@@ -63,15 +64,13 @@ export async function render(container, ctx) {
     : "No image registrations in your TypeIndex yet";
 
   if (!regs.length) {
-    $("#photos-body").innerHTML = `<div class="page-pad"><div class="card" style="color:var(--text-dim)">
-      <strong>No image collections registered.</strong>
-      <p style="margin:8px 0 0;font-size:14px;line-height:1.6">
-        To make a folder of images appear here, add a TypeRegistration to your <code>${escape(typeIndex.typeIndexUrl)}</code> pointing at it. The <code>forClass</code> can be any of:
-      </p>
-      <ul style="font-family:var(--mono);font-size:12px;color:var(--text-dim);margin:8px 0 0;padding-left:22px">
-        ${IMAGE_CLASSES.map(c => `<li>${escape(c)}</li>`).join("")}
-      </ul>
+    $("#photos-body").innerHTML = `<div class="page-pad"><div class="card" style="color:var(--text-dim);text-align:center;padding:32px 24px;max-width:640px;margin:0 auto">
+      <div style="font-size:15px;color:var(--text);margin-bottom:6px">No image collections yet.</div>
+      <div style="font-size:13px;margin-bottom:18px">Hub will create a container under <code>/hub/photos/</code> on your pod and register it as a <code>schema:ImageGallery</code> instance container in your TypeIndex. Drop images into the folder afterwards (any pod-aware file tool).</div>
+      <button class="btn primary" id="empty-new-gallery-btn">${ICON.plus} Create your first gallery</button>
+      <div style="margin-top:18px;font-size:12px;color:var(--text-faint)">Or add a TypeRegistration manually with one of: ${IMAGE_CLASSES.map(c => `<code>${escape(c)}</code>`).join(", ")}</div>
     </div></div>`;
+    $("#empty-new-gallery-btn").addEventListener("click", () => promptCreateGallery(ctx));
     renderSidebar();
     return;
   }
@@ -246,6 +245,19 @@ function shortLabel(url, kind) {
       .replace(/-data\.jsonld$/, "")
       .replace(/\.jsonld$/, "");
   } catch { return url; }
+}
+
+async function promptCreateGallery(ctx) {
+  const name = prompt("Gallery name (e.g. \"Travel\", \"2026\"):");
+  if (!name || !name.trim()) return;
+  showToast("Creating gallery…");
+  try {
+    await createGallery({ webid: ctx.auth.id, name: name.trim() });
+    showToast("Gallery created", "success");
+    ctx.switchApp("photos");
+  } catch (e) {
+    showToast("Create failed: " + e.message, "error");
+  }
 }
 
 export const meta = { name: "Photos", icon: ICON.photos, hasSidebar: true };

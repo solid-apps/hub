@@ -16,7 +16,7 @@
  *   - raw:     full WebID JSON-LD (needed for editable mode to PUT back)
  */
 
-import { putJsonLd, findSubject } from "../pod.js";
+import { putJsonLdSmart, findSubject } from "../pod.js";
 import { ICON, escape, initials, showToast, $$, avatarHTML } from "../ui.js";
 
 const FOAF_PERSON = "http://xmlns.com/foaf/0.1/Person";
@@ -122,7 +122,11 @@ function renderFull(input, container) {
     profile[f.key] = value || undefined;
     showToast("Saving…");
     try {
-      await putJsonLd(url.replace(/#.*$/, ""), raw);
+      // Smart PUT: if the WebID document is HTML with a JSON-LD island
+      // (SolidOS-style WebIDs like melvin.me), splice the new JSON into
+      // the island and PUT the entire HTML back, preserving every byte
+      // outside it. Plain JSON-LD pods get a normal PUT.
+      await putJsonLdSmart(url.replace(/#.*$/, ""), raw);
       showToast("Saved", "success");
       onChange?.();
     } catch (e) {
