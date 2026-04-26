@@ -150,6 +150,7 @@ async function loadExternal(url) {
   try {
     const mod = await import(url);
     pane = adapt(mod, url) || adapt(mod.default, url);
+    if (pane?.meta) pane.meta.__externalUrl = url;
   } catch (e) {
     console.warn("external pane import failed:", url, e);
   }
@@ -166,13 +167,69 @@ export function listExternal() {
   }));
 }
 
-/** Programmatically attempt to load + register an external pane URL. */
+// ---- External pane URL persistence (localStorage cache) -------------------
+// Mirrors apps.js. Pane URLs added via loadAndRegister are persisted to
+// localStorage["hubpod-panes"] and re-loaded on boot via loadAllExternal.
+// Pod-storage of this list is a future move (urn:solid:LoadedPanes) — for
+// now localStorage is fine: Settings → Panes already shows the list and
+// urn:solid:view on TypeRegistrations remains the per-resource override.
+
+const PANES_EXTERNAL_KEY = "hubpod-panes";
+
+function readExternalUrls() {
+  try { return JSON.parse(localStorage.getItem(PANES_EXTERNAL_KEY) || "[]"); }
+  catch { return []; }
+}
+function writeExternalUrls(urls) {
+  localStorage.setItem(PANES_EXTERNAL_KEY, JSON.stringify(urls));
+}
+
+export function getExternalUrls() {
+  return readExternalUrls();
+}
+
+/** Programmatically load + register an external pane URL. Persists the
+ *  URL so it loads again on next boot via loadAllExternal. */
 export async function loadAndRegister(url) {
   const pane = await loadExternal(url);
   if (!pane) throw new Error("Pane URL didn't expose canHandle + render");
-  // Add to registry so findFor sees it without needing urn:solid:view
-  registry.unshift(pane); // unshift so it wins over later-registered defaults
+  // Add to registry so findFor sees it without needing urn:solid:view.
+  // unshift so it wins over later-registered defaults.
+  if (!registry.some(p => p.meta?.id === pane.meta?.id)) {
+    registry.unshift(pane);
+  }
+  const urls = readExternalUrls();
+  if (!urls.includes(url)) {
+    urls.push(url);
+    writeExternalUrls(urls);
+  }
   return pane;
+}
+
+/** Remove a previously-loaded external pane URL: drop from the persistent
+ *  list and from the registry. Doesn't unload the JS module from the
+ *  load cache (browser limitation), but it won't be auto-loaded next boot. */
+export function removeExternal(url) {
+  const urls = readExternalUrls().filter(u => u !== url);
+  writeExternalUrls(urls);
+  const idx = registry.findIndex(p => p.meta?.__externalUrl === url);
+  if (idx !== -1) registry.splice(idx, 1);
+}
+
+/** On boot: import every URL in the persistent list and register
+ *  what loads. Failures are logged but don't block other panes. */
+export async function loadAllExternal() {
+  const urls = readExternalUrls();
+  for (const url of urls) {
+    try {
+      const pane = await loadExternal(url);
+      if (pane && !registry.some(p => p.meta?.id === pane.meta?.id)) {
+        registry.unshift(pane);
+      }
+    } catch (e) {
+      console.warn("external pane failed to load:", url, e);
+    }
+  }
 }
 
 /**

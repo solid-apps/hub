@@ -19,7 +19,7 @@ import * as Store from "./apps/store.js";
 import * as Settings from "./apps/settings.js";
 
 import { register as registerApp, list as listApps, find as findApp, loadAllExternal, syncFromPod as syncAppsFromPod } from "./apps.js";
-import { findFor as findPane, resolveFor as resolvePane, syncDefaultsFromPod } from "./panes.js";
+import { findFor as findPane, resolveFor as resolvePane, syncDefaultsFromPod, loadAllExternal as panesLoadAllExternal } from "./panes.js";
 
 // Register built-in panes. External panes can register themselves via
 // import('./panes.js').then(m => m.register(myPane)).
@@ -223,9 +223,9 @@ async function init() {
   const savedTheme = localStorage.getItem("hubpod-theme") || "light";
   setTheme(savedTheme);
 
-  // Load any user-installed external apps before building the rail.
-  // Failures are logged inside loadAllExternal — never blocks boot.
-  await loadAllExternal();
+  // Load any user-installed external apps and panes before building the rail.
+  // Failures are logged inside each loader — never blocks boot.
+  await Promise.all([loadAllExternal(), panesLoadAllExternal()]);
 
   $("#theme-btn").addEventListener("click", toggleTheme);
   $("#search-trigger").addEventListener("click", openSpotlight);
