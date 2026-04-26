@@ -282,6 +282,11 @@ export const CALENDAR_CLASSES = [
   "http://www.w3.org/2002/12/cal/ical#Vevent",
   "http://schema.org/Event",
 ];
+
+export const LIST_CLASSES = [
+  "http://schema.org/ItemList",
+  "https://schema.org/ItemList",
+];
 const SOLID_TERMS = "http://www.w3.org/ns/solid/terms#";
 
 const idOf = (v) => typeof v === "string" ? v : (v && v["@id"]) || null;
@@ -405,6 +410,29 @@ export async function createTracker({ webid, name }) {
   };
   await putJsonLd(dataUrl, seed);
   await addTypeRegistration(ti.typeIndexUrl, { forClass: TRACKER_CLASS, instance: dataUrl + "#this" });
+  return { url: dataUrl + "#this" };
+}
+
+export async function createList({ webid, name }) {
+  const slug = slugify(name);
+  if (!slug) throw new Error("Invalid name");
+  const storage = await discoverStorage(webid);
+  if (!storage) throw new Error("Couldn't find your pod root");
+  const ti = await fetchTypeIndex(webid);
+  await ensureContainer(storage + "public/todo/").catch(() => {});
+  const dataUrl = `${storage}public/todo/${slug}.jsonld`;
+  const seed = {
+    "@context": { schema: "https://schema.org/" },
+    "@id": "#this",
+    "@type": "schema:ItemList",
+    "schema:name": name,
+    "schema:itemListElement": [],
+  };
+  await putJsonLd(dataUrl, seed);
+  await addTypeRegistration(ti.typeIndexUrl, {
+    forClass: LIST_CLASSES[0],
+    instance: dataUrl + "#this",
+  });
   return { url: dataUrl + "#this" };
 }
 

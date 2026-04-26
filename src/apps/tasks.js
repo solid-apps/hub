@@ -8,8 +8,8 @@
  */
 
 import {
-  fetchTypeIndex, findRegistrations, TRACKER_CLASS,
-  getJsonLd, createTracker,
+  fetchTypeIndex, findRegistrations, TRACKER_CLASS, LIST_CLASSES,
+  getJsonLd, createTracker, createList,
 } from "../pod.js";
 import { resolveFor } from "../panes.js";
 import { ICON, escape, $, $$, requireSolid, showToast } from "../ui.js";
@@ -35,11 +35,15 @@ export async function render(container, ctx) {
         <h2 style="margin:0;font-size:22px;letter-spacing:-.01em">Tasks</h2>
         <div id="tasks-status" style="color:var(--text-dim);font-size:13px;margin-top:4px">Discovering trackers…</div>
       </div>
-      <button class="btn primary" id="new-tracker-btn">${ICON.plus} New tracker</button>
+      <div style="display:flex;gap:6px">
+        <button class="btn primary" id="new-tracker-btn">${ICON.plus} Tracker</button>
+        <button class="btn" id="new-list-btn">${ICON.plus} List</button>
+      </div>
     </div>
     <div id="tasks-body"><div class="spinner"></div></div>
   </div></div>`;
-  $("#new-tracker-btn").addEventListener("click", () => promptCreate(ctx));
+  $("#new-tracker-btn").addEventListener("click", () => promptCreate(ctx, "tracker"));
+  $("#new-list-btn").addEventListener("click", () => promptCreate(ctx, "list"));
 
   trackers = [];
   try {
@@ -54,19 +58,32 @@ export async function render(container, ctx) {
     return;
   }
 
-  const regs = findRegistrations(typeIndex, TRACKER_CLASS).filter(r => r.instance);
+  // Discover both wf:Tracker (issue array shape) and schema:ItemList (todo
+  // list shape). Each registration's forClass is preserved so resolveFor
+  // picks the right pane for each one.
+  const regs = typeIndex.registrations.filter(r => r.instance && (
+    r.forClass === TRACKER_CLASS || LIST_CLASSES.includes(r.forClass)
+  ));
+  const trCount = regs.filter(r => r.forClass === TRACKER_CLASS).length;
+  const lsCount = regs.filter(r => LIST_CLASSES.includes(r.forClass)).length;
   $("#tasks-status").textContent =
-    `${regs.length} tracker${regs.length === 1 ? "" : "s"} discovered via TypeIndex (${shortenUrl(typeIndex.typeIndexUrl)})`;
+    `${regs.length} item${regs.length === 1 ? "" : "s"} discovered via TypeIndex` +
+    (trCount && lsCount ? ` (${trCount} tracker${trCount === 1 ? "" : "s"}, ${lsCount} list${lsCount === 1 ? "" : "s"})` : "") +
+    ` (${shortenUrl(typeIndex.typeIndexUrl)})`;
 
   if (!regs.length) {
     $("#tasks-body").innerHTML = `
       <div class="card" style="color:var(--text-dim);text-align:center;padding:32px 24px">
-        <div style="font-size:15px;color:var(--text);margin-bottom:6px">No trackers yet.</div>
-        <div style="font-size:13px;margin-bottom:18px">Hub will create the file under <code>/public/tracker/</code> on your pod and register it in your TypeIndex.</div>
-        <button class="btn primary" id="empty-new-tracker-btn">${ICON.plus} Create your first tracker</button>
+        <div style="font-size:15px;color:var(--text);margin-bottom:6px">No trackers or lists yet.</div>
+        <div style="font-size:13px;margin-bottom:18px">Hub will create the file on your pod and register it in your TypeIndex.</div>
+        <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+          <button class="btn primary" id="empty-new-tracker-btn">${ICON.plus} New tracker (kanban)</button>
+          <button class="btn" id="empty-new-list-btn">${ICON.plus} New todo list</button>
+        </div>
       </div>
     `;
-    $("#empty-new-tracker-btn").addEventListener("click", () => promptCreate(ctx));
+    $("#empty-new-tracker-btn").addEventListener("click", () => promptCreate(ctx, "tracker"));
+    $("#empty-new-list-btn").addEventListener("click", () => promptCreate(ctx, "list"));
     renderSidebar();
     return;
   }
@@ -74,9 +91,9 @@ export async function render(container, ctx) {
   trackers = await Promise.all(regs.map(async r => {
     try {
       const doc = await getJsonLd(r.instance.replace(/#.*$/, ""));
-      return { url: r.instance, doc, view: r.view };
+      return { url: r.instance, doc, view: r.view, forClass: r.forClass };
     } catch (e) {
-      return { url: r.instance, doc: null, error: e.message, view: r.view };
+      return { url: r.instance, doc: null, error: e.message, view: r.view, forClass: r.forClass };
     }
   }));
 
@@ -90,7 +107,7 @@ export async function render(container, ctx) {
     const slot = document.createElement("div");
     slot.dataset.trackerIdx = i;
     body.appendChild(slot);
-    const input = { url: t.url, doc: t.doc, forClass: TRACKER_CLASS, view: t.view };
+    const input = { url: t.url, doc: t.doc, forClass: t.forClass, view: t.view };
     const pane = await resolveFor(input);
     if (pane) {
       try {
@@ -100,7 +117,7 @@ export async function render(container, ctx) {
       }
     } else {
       slot.innerHTML = `<div class="card" style="color:var(--text-dim)">
-        No pane available for <code>${escape(TRACKER_CLASS)}</code>.
+        No pane available for <code>${escape(t.forClass || "(unknown class)")}</code>.
         ${t.view ? `<div style="margin-top:6px;font-size:12px">External view URL: <code>${escape(t.view)}</code> failed to load.</div>` : ""}
         <div style="margin-top:6px;font-size:12px;color:var(--text-faint);font-family:var(--mono);word-break:break-all">${escape(t.url)}</div>
       </div>`;
@@ -117,16 +134,19 @@ function renderSidebar() {
     sb.innerHTML = `<div style="padding:14px;color:var(--text-faint);font-size:13px">No TypeIndex.</div>`;
     return;
   }
-  const regs = findRegistrations(typeIndex, TRACKER_CLASS);
+  const regs = typeIndex.registrations.filter(r => r.instance && (
+    r.forClass === TRACKER_CLASS || LIST_CLASSES.includes(r.forClass)
+  ));
   sb.innerHTML = `
     <div class="sb-section">
       <div class="sb-label">Discovered</div>
       ${regs.length === 0
         ? `<div style="padding:6px 18px;font-size:13px;color:var(--text-faint)">None</div>`
         : regs.map((r, i) => `
-          <button class="sb-item" data-scroll="${i}">
+          <button class="sb-item" data-scroll="${i}" title="${escape(r.forClass)}">
             ${ICON.tasks}
             <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escape(labelFor(r.instance))}</span>
+            <span style="margin-left:auto;font:600 9px var(--mono);letter-spacing:.06em;color:var(--text-faint);text-transform:uppercase">${r.forClass === TRACKER_CLASS ? "trk" : "list"}</span>
           </button>
         `).join("")}
     </div>
@@ -157,14 +177,18 @@ function shortenUrl(u) {
   } catch { return u; }
 }
 
-async function promptCreate(ctx) {
-  const name = prompt("Tracker name (e.g. \"Work\", \"Groceries\"):");
+async function promptCreate(ctx, kind = "tracker") {
+  const label = kind === "list" ? "Todo list" : "Tracker";
+  const name = prompt(`${label} name (e.g. "Work", "Groceries"):`);
   if (!name || !name.trim()) return;
-  showToast("Creating tracker…");
+  showToast(`Creating ${label.toLowerCase()}…`);
   try {
-    await createTracker({ webid: ctx.auth.id, name: name.trim() });
-    showToast("Tracker created", "success");
-    // Re-render Tasks
+    if (kind === "list") {
+      await createList({ webid: ctx.auth.id, name: name.trim() });
+    } else {
+      await createTracker({ webid: ctx.auth.id, name: name.trim() });
+    }
+    showToast(`${label} created`, "success");
     ctx.switchApp("tasks");
   } catch (e) {
     showToast("Create failed: " + e.message, "error");

@@ -21,6 +21,7 @@ import * as Settings from "./apps/settings.js";
 // import('./panes.js').then(m => m.register(myPane)).
 import * as TrackerPane      from "./panes/tracker.js";          // hub's local copy (vendored from pilot, LOSOS-shape)
 import * as PilotTrackerPane from "./panes/pilot-tracker.js";    // remote pilot bridge (opt-in via localStorage)
+import * as ListPane         from "./panes/list.js";             // schema:ItemList (vendored from SolidOS todo-pane)
 import * as NotePane         from "./panes/note.js";
 import * as EventPane        from "./panes/event.js";
 import * as PhotoPane        from "./panes/photo.js";
@@ -37,6 +38,7 @@ if (localStorage.getItem("hubpod-use-pilot-tracker") === "1") {
   registerPane(PilotTrackerPane);
 }
 registerPane(adapt(TrackerPane, "hub-pod/tracker"));
+registerPane(ListPane);
 registerPane(NotePane);
 registerPane(EventPane);
 registerPane(PhotoPane);
