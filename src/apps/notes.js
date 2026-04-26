@@ -1,37 +1,22 @@
 /**
- * Notes — markdown notes, discovered via solid:publicTypeIndex.
- *
- * Looks for any TypeRegistration whose forClass is a known note class
- * (schema:TextDocument, schema:Article, schema:CreativeWork). For each
- * registration:
- *   - solid:instanceContainer → a notebook (LDP container of notes)
- *   - solid:instance         → treated as a single notebook holding one note
- *
- * Each note is itself a JSON-LD resource:
- *   {
- *     "@context": { "@vocab": "https://schema.org/" },
- *     "@type": "TextDocument",
- *     "headline": "...",
- *     "datePublished": ISO,
- *     "encodingFormat": "text/markdown",
- *     "text": "..."
- *   }
- *
- * No hardcoded /hub/notes/ — Notes shows what your pod says it has.
+ * Notes app — discovers notebooks via solid:publicTypeIndex, owns
+ * the chrome (sidebar + note list), and delegates per-note rendering
+ * to the registered pane (see src/panes/note.js).
  */
 
 import {
   fetchTypeIndex, NOTE_CLASSES,
-  listContainer, getJsonLd, putJsonLd, deleteResource,
+  listContainer, getJsonLd, putJsonLd,
 } from "../pod.js";
-import { ICON, escape, fmtRel, showToast, renderEmpty, $, $$, debounce, requireSolid } from "../ui.js";
+import { findFor } from "../panes.js";
+import { ICON, escape, fmtRel, showToast, $, $$, requireSolid } from "../ui.js";
 
 let typeIndex = null;
 let notebooks = [];   // [{ url, label, kind, notes: [{url, doc}] }]
-let active = null;    // active note URL
-let cache = new Map(); // note url → doc
+let active = null;
+let cache = new Map();
 
-export function sidebar(ctx) {
+export function sidebar(_ctx) {
   return `
     <div class="sidebar-head">
       <h2>Notes</h2>
@@ -55,34 +40,25 @@ export async function render(container, ctx) {
   cache = new Map();
   active = null;
 
-  try {
-    typeIndex = await fetchTypeIndex(ctx.auth.id);
-  } catch (e) {
-    renderTypeIndexError(e);
-    return;
-  }
+  try { typeIndex = await fetchTypeIndex(ctx.auth.id); }
+  catch (e) { renderTypeIndexError(e); return; }
 
   const regs = typeIndex.registrations.filter(r =>
     NOTE_CLASSES.includes(r.forClass) && (r.instance || r.instanceContainer)
   );
+  if (!regs.length) { renderNoRegistrations(); return; }
 
-  if (!regs.length) {
-    renderNoRegistrations();
-    return;
-  }
-
-  // Resolve each into a notebook with its notes
   notebooks = await Promise.all(regs.map(resolveNotebook));
 
   drawList();
   renderSidebar();
 
   $("#new-note")?.removeAttribute("disabled");
-  $("#new-note")?.addEventListener("click", newNote);
+  $("#new-note")?.addEventListener("click", () => newNote(ctx));
 
   // Open the first available note
   const firstNote = notebooks.flatMap(nb => nb.notes)[0];
-  if (firstNote) openNote(firstNote.url);
+  if (firstNote) openNote(firstNote.url, firstNote.doc, regForNote(firstNote.url), ctx);
   else $("#note-reader").innerHTML = `<div class="empty">No notes yet — click + to create one.</div>`;
 }
 
@@ -100,13 +76,13 @@ async function resolveNotebook(reg) {
         url: reg.instanceContainer,
         label: shortLabel(reg.instanceContainer, "container"),
         kind: "container",
+        forClass: reg.forClass,
         notes: notes.sort((a, b) => (b.doc.datePublished || "").localeCompare(a.doc.datePublished || "")),
       };
     } catch (e) {
-      return { url: reg.instanceContainer, label: shortLabel(reg.instanceContainer, "container"), kind: "container", notes: [], error: e.message };
+      return { url: reg.instanceContainer, label: shortLabel(reg.instanceContainer, "container"), kind: "container", forClass: reg.forClass, notes: [], error: e.message };
     }
   }
-  // instance: a single note doc
   try {
     const doc = await getJsonLd(reg.instance.replace(/#.*$/, ""));
     if (doc) cache.set(reg.instance, doc);
@@ -114,11 +90,16 @@ async function resolveNotebook(reg) {
       url: reg.instance,
       label: shortLabel(reg.instance, "instance"),
       kind: "instance",
+      forClass: reg.forClass,
       notes: doc ? [{ url: reg.instance, doc }] : [],
     };
   } catch (e) {
-    return { url: reg.instance, label: shortLabel(reg.instance, "instance"), kind: "instance", notes: [], error: e.message };
+    return { url: reg.instance, label: shortLabel(reg.instance, "instance"), kind: "instance", forClass: reg.forClass, notes: [], error: e.message };
   }
+}
+
+function regForNote(noteUrl) {
+  return notebooks.find(nb => nb.notes.some(n => n.url === noteUrl))?.forClass;
 }
 
 function drawList() {
@@ -134,17 +115,22 @@ function drawList() {
     `;
     return;
   }
-  // Single notebook → flat list. Multiple → grouped.
   if (notebooks.length === 1) {
-    const nb = notebooks[0];
-    list.innerHTML = nb.notes.map(n => noteRow(n)).join("");
+    list.innerHTML = notebooks[0].notes.map(noteRow).join("");
   } else {
     list.innerHTML = notebooks.map(nb => `
       <div style="padding:6px 14px 4px;font-size:11px;font-weight:600;color:var(--text-faint);text-transform:uppercase;letter-spacing:.06em;background:var(--bg);position:sticky;top:0">${escape(nb.label)} <span style="font-family:var(--mono);font-weight:400">· ${nb.notes.length}</span></div>
-      ${nb.notes.map(n => noteRow(n)).join("")}
+      ${nb.notes.map(noteRow).join("")}
     `).join("");
   }
-  $$("[data-note]", list).forEach(el => el.addEventListener("click", () => openNote(el.dataset.note)));
+  $$("[data-note]", list).forEach(el => {
+    el.addEventListener("click", () => {
+      const url = el.dataset.note;
+      const doc = cache.get(url);
+      const ctx = lastCtx;
+      openNote(url, doc, regForNote(url), ctx);
+    });
+  });
 }
 
 function noteRow(n) {
@@ -159,11 +145,7 @@ function noteRow(n) {
 
 function renderSidebar() {
   const sb = $("#notes-sb");
-  if (!sb) return;
-  if (!typeIndex) {
-    sb.innerHTML = `<div style="padding:14px;color:var(--text-faint);font-size:13px">No TypeIndex.</div>`;
-    return;
-  }
+  if (!sb || !typeIndex) return;
   if (!notebooks.length) {
     sb.innerHTML = `
       <div class="sb-section">
@@ -195,80 +177,42 @@ function renderSidebar() {
   `;
 }
 
-async function openNote(url) {
+let lastCtx = null;
+
+async function openNote(url, doc, forClass, ctx) {
+  lastCtx = ctx;
   active = url;
   drawList();
-  renderSidebar();
 
-  let doc = cache.get(url);
   if (!doc) {
     try { doc = await getJsonLd(url); cache.set(url, doc); }
     catch (e) { showToast("Failed to load note: " + e.message, "error"); return; }
   }
 
   const reader = $("#note-reader");
-  reader.innerHTML = `
-    <div class="meta">
-      <span><b style="color:var(--text)">Saved</b> · <span id="save-status" class="saved">in sync</span></span>
-      <span style="color:var(--text-faint)">${escape(fmtRel(doc.datePublished))}</span>
-      <span style="color:var(--text-faint);font-family:var(--mono);font-size:11px;margin-left:auto">${escape(url)}</span>
-      <button class="btn danger" id="del-note" title="Delete">${ICON.trash}</button>
-    </div>
-    <input class="title" id="note-title" value="${escape(doc.headline || "")}" placeholder="Untitled note" />
-    <textarea class="body" id="note-body" placeholder="Write in markdown — supports # headers, **bold**, *italic*, [links](url), and images.">${escape(doc.text || "")}</textarea>
-  `;
+  const pane = findFor({ url, doc, forClass });
+  if (!pane) {
+    reader.innerHTML = `<div class="empty">No pane registered for this note's @type.<div style="margin-top:6px;font-family:var(--mono);font-size:11px;color:var(--text-faint)">${escape(url)}</div></div>`;
+    return;
+  }
 
-  const title = $("#note-title");
-  const body = $("#note-body");
-  const save = debounce(async () => {
-    doc.headline = title.value;
-    doc.text = body.value;
-    doc.datePublished = new Date().toISOString();
-    cache.set(url, doc);
-    setSaveStatus("saving");
-    try {
-      await putJsonLd(url, doc);
-      setSaveStatus("saved");
-      // Refresh list metadata for this note
-      for (const nb of notebooks) {
-        const n = nb.notes.find(x => x.url === url);
-        if (n) { n.doc = doc; }
-      }
+  await pane.render({
+    url, doc, forClass,
+    onChange: () => {
+      // Bubble metadata changes back into the list rows.
       drawList();
-    } catch (e) {
-      setSaveStatus("err", e.message);
-    }
-  }, 600);
-  title.addEventListener("input", save);
-  body.addEventListener("input", save);
-
-  $("#del-note").addEventListener("click", async () => {
-    if (!confirm("Delete this note?")) return;
-    try {
-      await deleteResource(url);
+    },
+    onDelete: () => {
       cache.delete(url);
       for (const nb of notebooks) nb.notes = nb.notes.filter(n => n.url !== url);
       active = null;
       drawList();
-      renderSidebar();
       $("#note-reader").innerHTML = `<div class="empty">Pick a note or create a new one.</div>`;
-      showToast("Deleted", "success");
-    } catch (e) {
-      showToast("Delete failed: " + e.message, "error");
-    }
-  });
+    },
+  }, reader, ctx);
 }
 
-function setSaveStatus(kind, msg) {
-  const el = $("#save-status");
-  if (!el) return;
-  if (kind === "saving") { el.className = "saving"; el.textContent = "saving…"; }
-  else if (kind === "saved") { el.className = "saved"; el.textContent = "in sync"; }
-  else if (kind === "err") { el.className = "err"; el.textContent = "save error: " + (msg || ""); }
-}
-
-async function newNote() {
-  // Pick the first instanceContainer notebook to create in
+async function newNote(ctx) {
   const nb = notebooks.find(n => n.kind === "container");
   if (!nb) {
     showToast("Need a notebook registered with solid:instanceContainer to create new notes", "error");
@@ -292,7 +236,7 @@ async function newNote() {
     showToast("Note created", "success");
     drawList();
     renderSidebar();
-    openNote(url);
+    openNote(url, doc, nb.forClass, ctx);
     setTimeout(() => $("#note-title")?.focus(), 50);
   } catch (e) {
     showToast("Create failed: " + e.message, "error");
@@ -307,8 +251,7 @@ function shortLabel(url, kind) {
       return decodeURIComponent(parts[parts.length - 1] || url);
     }
     return url.split("#")[0].split("/").pop()
-      .replace(/-data\.jsonld$/, "")
-      .replace(/\.jsonld$/, "");
+      .replace(/-data\.jsonld$/, "").replace(/\.jsonld$/, "");
   } catch { return url; }
 }
 

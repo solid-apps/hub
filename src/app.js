@@ -20,8 +20,10 @@ import * as Settings from "./apps/settings.js";
 // Register built-in panes. External panes can register themselves via
 // import('./panes.js').then(m => m.register(myPane)).
 import * as TrackerPane from "./panes/tracker.js";
+import * as NotePane from "./panes/note.js";
 import { register as registerPane } from "./panes.js";
 registerPane(TrackerPane);
+registerPane(NotePane);
 
 const APPS = [
   { id: "home",     mod: Home },
