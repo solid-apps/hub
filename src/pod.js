@@ -360,6 +360,48 @@ export function findRegistrations(typeIndex, classIri) {
  *
  * Returns the new registration's local @id (e.g. "#reg-abcd12").
  */
+/**
+ * Remove a TypeRegistration entry from the TypeIndex. Matches by either
+ * solid:instance or solid:instanceContainer === url. PUTs the updated
+ * doc back. No-op if no matching registration is found.
+ */
+export async function removeTypeRegistration(typeIndexUrl, url) {
+  const doc = await getJsonLd(typeIndexUrl);
+  if (!doc) throw new Error(`TypeIndex not found at ${typeIndexUrl}`);
+  const idOf = (v) => typeof v === "string" ? v : v?.["@id"];
+  const matches = (reg) => {
+    const inst = idOf(reg["solid:instance"] ?? reg["http://www.w3.org/ns/solid/terms#instance"]);
+    const cont = idOf(reg["solid:instanceContainer"] ?? reg["http://www.w3.org/ns/solid/terms#instanceContainer"]);
+    return inst === url || cont === url;
+  };
+  let removed = false;
+  for (const key of ["schema:itemListElement", "@graph"]) {
+    if (Array.isArray(doc[key])) {
+      const before = doc[key].length;
+      doc[key] = doc[key].filter(reg => !matches(reg));
+      if (doc[key].length < before) removed = true;
+    }
+  }
+  if (!removed) return false;
+  await putJsonLd(typeIndexUrl, doc);
+  return true;
+}
+
+/**
+ * Delete a registered resource end-to-end: remove the TypeIndex entry,
+ * and (if purgeData) also DELETE the underlying file. Returns whether
+ * the registration was found and removed.
+ */
+export async function deleteRegisteredResource({ webid, url, purgeData }) {
+  const ti = await fetchTypeIndex(webid);
+  const removed = await removeTypeRegistration(ti.typeIndexUrl, url);
+  if (purgeData) {
+    const fileUrl = url.replace(/#.*$/, "");
+    await deleteResource(fileUrl);
+  }
+  return removed;
+}
+
 export async function addTypeRegistration(typeIndexUrl, { forClass, instance, instanceContainer }) {
   const doc = await getJsonLd(typeIndexUrl);
   if (!doc) throw new Error(`TypeIndex not found at ${typeIndexUrl}`);

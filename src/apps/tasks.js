@@ -9,7 +9,7 @@
 
 import {
   fetchTypeIndex, findRegistrations, TRACKER_CLASS, LIST_CLASSES,
-  getJsonLd, createTracker, createList,
+  getJsonLd, createTracker, createList, deleteRegisteredResource,
 } from "../pod.js";
 import { resolveFor } from "../panes.js";
 import { ICON, escape, $, $$, requireSolid, showToast } from "../ui.js";
@@ -98,15 +98,25 @@ export async function render(container, ctx) {
   }));
 
   // Empty out the body and let panes render each tracker into its own slot.
-  // Each tracker can opt into a specific external pane via urn:solid:view
-  // on its TypeRegistration; otherwise the registered built-in is used.
+  // Each card is wrapped so we can overlay a delete (×) button without the
+  // pane needing to know about it.
   const body = $("#tasks-body");
   body.innerHTML = "";
   for (let i = 0; i < trackers.length; i++) {
     const t = trackers[i];
+    const wrap = document.createElement("div");
+    wrap.className = "task-card-wrap";
+    wrap.dataset.trackerIdx = i;
     const slot = document.createElement("div");
-    slot.dataset.trackerIdx = i;
-    body.appendChild(slot);
+    const delBtn = document.createElement("button");
+    delBtn.className = "task-card-del";
+    delBtn.title = "Remove from TypeIndex…";
+    delBtn.innerHTML = "×";
+    delBtn.addEventListener("click", () => promptDelete(t, ctx));
+    wrap.appendChild(slot);
+    wrap.appendChild(delBtn);
+    body.appendChild(wrap);
+
     const input = { url: t.url, doc: t.doc, forClass: t.forClass, view: t.view };
     const pane = await resolveFor(input);
     if (pane) {
@@ -175,6 +185,25 @@ function shortenUrl(u) {
     const x = new URL(u);
     return x.hostname + x.pathname.replace(/\/$/, "");
   } catch { return u; }
+}
+
+async function promptDelete(t, ctx) {
+  const fileUrl = (t.url || "").replace(/#.*$/, "");
+  const label = labelFor(t.url) || fileUrl;
+  if (!confirm(`Remove "${label}" from your TypeIndex?\n\n${t.url}`)) return;
+  const purgeData = confirm(
+    `Also delete the data file?\n\n` +
+    `OK   = delete ${fileUrl}\n` +
+    `Cancel = keep the file (orphan), only the registration is removed.`
+  );
+  showToast("Deleting…");
+  try {
+    await deleteRegisteredResource({ webid: ctx.auth.id, url: t.url, purgeData });
+    showToast(purgeData ? "Deleted (registration + file)" : "Removed from TypeIndex (file kept)", "success");
+    ctx.switchApp("tasks");
+  } catch (e) {
+    showToast("Delete failed: " + e.message, "error");
+  }
 }
 
 async function promptCreate(ctx, kind = "tracker") {
