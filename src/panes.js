@@ -160,9 +160,12 @@ export function adapt(obj, idOrUrl) {
     canHandle(input) {
       const subject = makeSubject(input);
       const store = makeStore(input);
-      try { return obj.canHandle(subject, store); } catch { return false; }
+      // 3rd arg (rawData) is a hub extension over SLIP-48's 2-arg canHandle —
+      // collection-shape panes need it to match on `items` etc. Other panes
+      // ignore the extra arg.
+      try { return obj.canHandle(subject, store, input?.doc || null); } catch { return false; }
     },
-    async render(input, container, _ctx) {
+    async render(input, container, ctx) {
       // Bridge SLIP-48 CustomEvents → hub's input.onChange / input.onDelete /
       // input.onOpen callbacks. Panes that emit pane:change / pane:delete /
       // pane:open on their container get their callbacks wired up automatically.
@@ -174,7 +177,10 @@ export function adapt(obj, idOrUrl) {
       container.addEventListener("pane:open",   onOpen);
       const subject = makeSubject(input);
       const store = makeStore(input);
-      return obj.render(subject, store, container, input?.doc || null);
+      // ctx is a hub extension over SLIP-48's 4-arg render — collection-shape
+      // panes use ctx.resolvePane to recurse into child panes. Other panes
+      // ignore the extra arg.
+      return obj.render(subject, store, container, input?.doc || null, ctx);
     },
   };
 }

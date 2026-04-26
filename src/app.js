@@ -18,6 +18,7 @@ import * as Activity from "./apps/activity.js";
 import * as Settings from "./apps/settings.js";
 
 import { register as registerApp, list as listApps, find as findApp, loadAllExternal } from "./apps.js";
+import { findFor as findPane, resolveFor as resolvePane } from "./panes.js";
 
 // Register built-in panes. External panes can register themselves via
 // import('./panes.js').then(m => m.register(myPane)).
@@ -29,6 +30,7 @@ import * as EventPane        from "./panes/event.js";
 import * as PhotoPane        from "./panes/photo.js";
 import * as PersonPane       from "./panes/person.js";
 import * as FilePane         from "./panes/file.js";
+import * as CollectionPane   from "./panes/collection.js";
 import { register as registerPane, adapt } from "./panes.js";
 
 // Tracker pane priority:
@@ -46,6 +48,7 @@ registerPane(adapt(EventPane,   "hub-pod/event"));
 registerPane(adapt(PhotoPane,   "hub-pod/photo"));
 registerPane(adapt(PersonPane,  "hub-pod/person"));
 registerPane(adapt(FilePane,    "hub-pod/file"));
+registerPane(adapt(CollectionPane, "hub-pod/collection"));
 
 // Built-in apps. Order here = rail order. External apps load via
 // loadAllExternal() at boot and append to the registry.
@@ -60,6 +63,15 @@ const state = {
 const ctx = {
   get auth() { return getAuth(); },
   switchApp,
+  // Pane recursion: collection-shaped panes delegate per-item rendering
+  // back through the host so the same urn:solid:view → user-pin → registry
+  // cascade is honoured for children.
+  findPane,
+  resolvePane,
+  // Authenticated fetch — DPoP-signed for Solid sessions, same as
+  // pod.js uses internally. Panes that need their own GET/PUT calls
+  // should prefer pod.js helpers, but this is the escape hatch.
+  fetch: (...args) => (window.xlogin?.authFetch || fetch)(...args),
 };
 
 // ---- Rail ----------------------------------------------------------------

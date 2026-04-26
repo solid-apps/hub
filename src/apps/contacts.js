@@ -69,29 +69,25 @@ export async function render(container, ctx) {
     return;
   }
 
-  page.innerHTML = `<div class="contacts-grid" id="contacts-grid"></div>`;
+  page.innerHTML = `<div id="contacts-grid" style="padding:22px 24px"></div>`;
   const grid = $("#contacts-grid");
 
-  // Render placeholder cards immediately; resolve profiles in parallel
-  webIds.forEach(async (wid, i) => {
-    const slot = document.createElement("div");
-    grid.appendChild(slot);
-    // Initial placeholder via the pane (no profile yet)
-    const placeholder = { url: wid, doc: { mode: "card" }, forClass: FOAF_PERSON };
-    const pane = findFor(placeholder);
-    if (!pane) {
-      slot.outerHTML = `<div class="contact-card"><div class="ava">?</div><div class="name">No PersonPane</div><div class="webid">${escape(wid)}</div></div>`;
-      return;
-    }
-    pane.render(placeholder, slot, ctx);
-    // Then upgrade with the real profile
-    try {
-      const profile = await fetchWebIdProfile(wid);
-      pane.render({ url: wid, doc: { profile, mode: "card" }, forClass: FOAF_PERSON }, slot, ctx);
-    } catch {
-      // leave placeholder
-    }
-  });
+  // Resolve every WebID's profile in parallel; failed ones render with
+  // null profile (PersonPane card-mode shows "Loading…" placeholder).
+  const profiles = await Promise.all(
+    webIds.map(wid => fetchWebIdProfile(wid).catch(() => null))
+  );
+  const items = webIds.map((wid, i) => ({
+    url: wid,
+    doc: { profile: profiles[i], mode: "card" },
+    forClass: FOAF_PERSON,
+  }));
+
+  // Hand the items to the generic CollectionPane — it iterates and
+  // delegates each card back through ctx.resolvePane to PersonPane.
+  const collInput = { doc: { items, layout: "grid" } };
+  const coll = findFor(collInput);
+  if (coll) await coll.render(collInput, grid, ctx);
 }
 
 function loginPrompt() {
