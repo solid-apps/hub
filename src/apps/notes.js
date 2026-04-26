@@ -33,7 +33,7 @@ export async function render(container, ctx) {
   if (requireSolid(container, ctx, "Notes discovers notebooks via solid:publicTypeIndex.")) return;
   lastCtx = ctx;
 
-  container.innerHTML = `<div class="content"><div class="notes-layout">
+  container.innerHTML = `<div class="content"><div class="notes-layout" id="notes-layout">
     <div class="notes-list" id="notes-list"><div class="spinner"></div></div>
     <div class="note-reader" id="note-reader"><div class="empty">Pick a note or create a new one.</div></div>
   </div></div>`;
@@ -200,17 +200,30 @@ async function openNote(url, doc, forClass, ctx) {
     catch (e) { showToast("Failed to load note: " + e.message, "error"); return; }
   }
 
+  // Mobile: switch the layout into reader-only mode (CSS hides the list).
+  $("#notes-layout")?.classList.add("has-active");
+
   const reader = $("#note-reader");
+  // Prepend a mobile-only "Back" button — the pane fills the rest of the
+  // reader container.
+  reader.innerHTML = `
+    <button class="btn notes-back-mobile" id="notes-back-mobile" style="margin-bottom:14px">← Back to list</button>
+    <div id="note-reader-pane"></div>
+  `;
+  $("#notes-back-mobile").addEventListener("click", () => {
+    $("#notes-layout")?.classList.remove("has-active");
+  });
+
   const pane = findFor({ url, doc, forClass });
+  const slot = $("#note-reader-pane");
   if (!pane) {
-    reader.innerHTML = `<div class="empty">No pane registered for this note's @type.<div style="margin-top:6px;font-family:var(--mono);font-size:11px;color:var(--text-faint)">${escape(url)}</div></div>`;
+    slot.innerHTML = `<div class="empty">No pane registered for this note's @type.<div style="margin-top:6px;font-family:var(--mono);font-size:11px;color:var(--text-faint)">${escape(url)}</div></div>`;
     return;
   }
 
   await pane.render({
     url, doc, forClass,
     onChange: () => {
-      // Bubble metadata changes back into the list rows.
       drawList();
     },
     onDelete: () => {
@@ -219,8 +232,9 @@ async function openNote(url, doc, forClass, ctx) {
       active = null;
       drawList();
       $("#note-reader").innerHTML = `<div class="empty">Pick a note or create a new one.</div>`;
+      $("#notes-layout")?.classList.remove("has-active");
     },
-  }, reader, ctx);
+  }, slot, ctx);
 }
 
 async function newNote(ctx) {
