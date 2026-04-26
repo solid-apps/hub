@@ -15,6 +15,7 @@ import * as Notes from "./apps/notes.js";
 import * as Tasks from "./apps/tasks.js";
 import * as Photos from "./apps/photos.js";
 import * as Activity from "./apps/activity.js";
+import * as Store from "./apps/store.js";
 import * as Settings from "./apps/settings.js";
 
 import { register as registerApp, list as listApps, find as findApp, loadAllExternal, syncFromPod as syncAppsFromPod } from "./apps.js";
@@ -52,7 +53,7 @@ registerPane(adapt(CollectionPane, "hub-pod/collection"));
 
 // Built-in apps. Order here = rail order. External apps load via
 // loadAllExternal() at boot and append to the registry.
-[Home, Profile, Files, Calendar, Contacts, Notes, Tasks, Photos, Activity, Settings]
+[Home, Profile, Files, Calendar, Contacts, Notes, Tasks, Photos, Activity, Store, Settings]
   .forEach(mod => registerApp(mod));
 
 const state = {

@@ -1,0 +1,36 @@
+{
+  "@context": {
+    "schema": "https://schema.org/",
+    "urn": "urn:solid:"
+  },
+  "@id": "#this",
+  "@type": "schema:ItemList",
+  "schema:name": "hub-pod app directory",
+  "schema:description": "A curated list of apps for the hub-pod store. Each item is an ES module URL conforming to hub's app interface (meta + render). Add your own by sending a PR to https://github.com/solid-apps/hub.",
+  "schema:itemListElement": [
+    {
+      "@type": "urn:App",
+      "@id": "https://solid-apps.github.io/hub/directory/pad.js",
+      "schema:name": "Pad",
+      "schema:description": "A markdown scratchpad. Auto-saves to localStorage.",
+      "schema:icon": "📝",
+      "schema:author": "hub-pod"
+    },
+    {
+      "@type": "urn:App",
+      "@id": "https://solid-apps.github.io/hub/directory/sticky.js",
+      "schema:name": "Sticky",
+      "schema:description": "Coloured sticky notes you can drag around. Persists to localStorage.",
+      "schema:icon": "📌",
+      "schema:author": "hub-pod"
+    },
+    {
+      "@type": "urn:App",
+      "@id": "https://solid-apps.github.io/hub/directory/clock.js",
+      "schema:name": "Clock",
+      "schema:description": "Live clocks for multiple time zones.",
+      "schema:icon": "🕒",
+      "schema:author": "hub-pod"
+    }
+  ]
+}
