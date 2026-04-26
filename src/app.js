@@ -17,7 +17,7 @@ import * as Photos from "./apps/photos.js";
 import * as Activity from "./apps/activity.js";
 import * as Settings from "./apps/settings.js";
 
-import { register as registerApp, list as listApps, find as findApp, loadAllExternal } from "./apps.js";
+import { register as registerApp, list as listApps, find as findApp, loadAllExternal, syncFromPod as syncAppsFromPod } from "./apps.js";
 import { findFor as findPane, resolveFor as resolvePane } from "./panes.js";
 
 // Register built-in panes. External panes can register themselves via
@@ -262,10 +262,30 @@ async function init() {
   });
 
   // Auth changes → re-render pill + current app
-  onAuth(() => {
+  onAuth(async () => {
     renderAuthPill();
     // Re-render current app so it can react to login/logout
     switchApp(state.app);
+
+    // Sync apps list from pod once auth is known. If pod's list differs
+    // from the localStorage cache we just booted from, prompt reload so
+    // the rail picks it up. Solid sessions only — Nostr-only sessions
+    // don't have a TypeIndex.
+    const auth = getAuth();
+    if (auth.loggedIn && auth.type === "solid") {
+      try {
+        const r = await syncAppsFromPod(auth.id);
+        if (r.changed) {
+          if (confirm(
+            "Your pod's installed apps list differs from this browser's cache.\n\n" +
+            `Pod has: ${r.items.length} app${r.items.length === 1 ? "" : "s"}\n` +
+            "Reload to apply the pod's list?"
+          )) window.location.reload();
+        }
+      } catch (e) {
+        console.warn("apps sync from pod failed:", e);
+      }
+    }
   });
 
   buildRail();

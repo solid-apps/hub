@@ -2,7 +2,7 @@
  * Settings — theme, identity, pod info.
  */
 
-import { discoverStorage, hubRoot, fetchTypeIndex, findRegistrations, TRACKER_CLASS, NOTE_CLASSES, CALENDAR_CLASSES, IMAGE_CLASSES } from "../pod.js";
+import { discoverStorage, hubRoot, fetchTypeIndex, findRegistrations, getAppsList, TRACKER_CLASS, NOTE_CLASSES, CALENDAR_CLASSES, IMAGE_CLASSES, APP_CLASS } from "../pod.js";
 import { logout } from "../auth.js";
 import { ICON, escape, $, $$, showToast } from "../ui.js";
 import { listRegistered, listExternal, loadAndRegister, getClassDefaults, setClassDefault } from "../panes.js";
@@ -12,6 +12,8 @@ import {
   loadAndRegister as loadAndRegisterApp,
   getExternalUrls as getAppUrls,
   removeExternal as removeExternalApp,
+  syncToPod as syncAppsToPod,
+  syncFromPod as syncAppsFromPod,
 } from "../apps.js";
 
 // Hosts considered "trusted" — no confirm prompt before loading a pane/app URL.
@@ -100,12 +102,24 @@ export async function render(container, ctx) {
 
         <div class="set-row" style="display:block">
           <div class="lbl" style="margin-bottom:8px">Add an app by URL</div>
-          <div class="desc" style="margin-bottom:10px">URL is saved in localStorage and loaded on every boot. Reload after adding to see it on the rail.</div>
+          <div class="desc" style="margin-bottom:10px">URL is saved in localStorage and (if signed in) written to your pod under <code>${escape(APP_CLASS)}</code>. Reload after adding to see it on the rail.</div>
           <div style="display:flex;gap:8px">
             <input id="app-load-url" placeholder="https://example.org/my-app.js" style="flex:1;background:var(--bg-elev);border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-family:var(--mono);font-size:13px;color:var(--text);outline:none" />
             <button class="btn primary" id="app-load-btn">Add</button>
           </div>
         </div>
+
+        ${ctx.auth.type === "solid" ? `
+          <div class="set-row" style="display:block">
+            <div class="lbl" style="margin-bottom:8px">Pod sync</div>
+            <div class="desc" style="margin-bottom:10px">Apps are persisted on your pod as a <code>schema:ItemList</code> doc registered with <code>forClass: ${escape(APP_CLASS)}</code> in your TypeIndex. Other browsers see the same list when they sign in.</div>
+            <div id="apps-pod-status" style="font-family:var(--mono);font-size:12px;color:var(--text-dim);margin-bottom:8px">Checking…</div>
+            <div style="display:flex;gap:8px">
+              <button class="btn" id="apps-sync-to-pod-btn">Push localStorage → pod</button>
+              <button class="btn" id="apps-sync-from-pod-btn">Pull pod → localStorage</button>
+            </div>
+          </div>
+        ` : ""}
       </div>
 
       <div class="set-section">
@@ -241,7 +255,8 @@ export async function render(container, ctx) {
   });
 
   // ---- Apps browser ----
-  drawAppsList();
+  drawAppsList(ctx);
+  refreshAppsPodStatus(ctx);
 
   $("#app-load-btn")?.addEventListener("click", async () => {
     const url = $("#app-load-url")?.value.trim();
@@ -250,10 +265,12 @@ export async function render(container, ctx) {
     const btn = $("#app-load-btn");
     btn.disabled = true; btn.textContent = "Adding…";
     try {
-      const app = await loadAndRegisterApp(url);
+      const webid = ctx.auth.type === "solid" ? ctx.auth.id : null;
+      const app = await loadAndRegisterApp(url, webid);
       showToast(`Added ${app.meta?.name || app.meta?.id || url} — reload to see it on the rail`, "success");
       $("#app-load-url").value = "";
-      drawAppsList();
+      drawAppsList(ctx);
+      refreshAppsPodStatus(ctx);
     } catch (e) {
       showToast("Add failed: " + e.message, "error");
     } finally {
@@ -261,7 +278,64 @@ export async function render(container, ctx) {
     }
   });
 
+  $("#apps-sync-to-pod-btn")?.addEventListener("click", async () => {
+    const btn = $("#apps-sync-to-pod-btn");
+    btn.disabled = true; btn.textContent = "Pushing…";
+    try {
+      await syncAppsToPod(ctx.auth.id);
+      showToast("Pushed apps list to pod", "success");
+      refreshAppsPodStatus(ctx);
+    } catch (e) {
+      showToast("Push failed: " + e.message, "error");
+    } finally {
+      btn.disabled = false; btn.textContent = "Push localStorage → pod";
+    }
+  });
+
+  $("#apps-sync-from-pod-btn")?.addEventListener("click", async () => {
+    const btn = $("#apps-sync-from-pod-btn");
+    btn.disabled = true; btn.textContent = "Pulling…";
+    try {
+      const r = await syncAppsFromPod(ctx.auth.id);
+      if (r.source === "none") {
+        showToast("No apps registration found on this pod", "info");
+      } else if (r.changed) {
+        if (confirm(`Pulled ${r.items.length} app${r.items.length === 1 ? "" : "s"} from pod. Reload to apply?`)) {
+          window.location.reload();
+        }
+      } else {
+        showToast("Already in sync", "success");
+      }
+      refreshAppsPodStatus(ctx);
+    } catch (e) {
+      showToast("Pull failed: " + e.message, "error");
+    } finally {
+      btn.disabled = false; btn.textContent = "Pull pod → localStorage";
+    }
+  });
+
   $("#logout-btn")?.addEventListener("click", () => logout());
+}
+
+async function refreshAppsPodStatus(ctx) {
+  const el = $("#apps-pod-status");
+  if (!el || ctx.auth.type !== "solid") return;
+  el.textContent = "Checking…";
+  try {
+    const r = await getAppsList(ctx.auth.id);
+    if (!r) {
+      el.innerHTML = `<span style="color:var(--text-faint)">No <code>${escape(APP_CLASS)}</code> registration on pod yet — push to create it.</span>`;
+      return;
+    }
+    const cache = getAppUrls();
+    const same = cache.length === r.items.length && cache.every((u, i) => u === r.items[i]);
+    el.innerHTML = `<div style="color:var(--good)">✓ Pod has ${r.items.length} app${r.items.length === 1 ? "" : "s"} at <code style="word-break:break-all">${escape(r.url)}</code></div>` +
+                   (same
+                     ? `<div style="color:var(--text-faint);margin-top:4px">In sync with localStorage.</div>`
+                     : `<div style="color:var(--warning);margin-top:4px">Differs from localStorage (${cache.length} cached).</div>`);
+  } catch (e) {
+    el.innerHTML = `<span style="color:var(--danger)">Couldn't check pod: ${escape(e.message)}</span>`;
+  }
 }
 
 function drawPanesLists() {
@@ -331,7 +405,7 @@ function drawPanesLists() {
   }
 }
 
-function drawAppsList() {
+function drawAppsList(ctx) {
   const reg = $("#apps-registered-list");
   if (!reg) return;
   const apps = listApps();
@@ -354,11 +428,14 @@ function drawAppsList() {
       </div>
     `;
   }).join("");
-  $$("[data-app-remove]", reg).forEach(btn => btn.addEventListener("click", () => {
+  $$("[data-app-remove]", reg).forEach(btn => btn.addEventListener("click", async () => {
     const url = btn.dataset.appRemove;
     if (!confirm(`Remove this app?\n\n${url}\n\nIt'll disappear from the rail on next reload.`)) return;
-    removeExternalApp(url);
-    drawAppsList();
+    const webid = ctx?.auth?.type === "solid" ? ctx.auth.id : null;
+    try { await removeExternalApp(url, webid); }
+    catch (e) { showToast("Remove from pod failed: " + e.message, "error"); }
+    drawAppsList(ctx);
+    refreshAppsPodStatus(ctx);
     showToast("App removed — reload to update the rail", "info");
   }));
 }

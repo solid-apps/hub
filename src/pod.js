@@ -287,6 +287,13 @@ export const LIST_CLASSES = [
   "http://schema.org/ItemList",
   "https://schema.org/ItemList",
 ];
+
+// urn:solid:App — provisional class for "an installed app on this pod."
+// Each app is a URL to an ES module conforming to hub-pod's app interface
+// (meta + render). Used as the forClass on a TypeRegistration whose
+// solid:instance points at the apps list doc.
+export const APP_CLASS = "urn:solid:App";
+
 const SOLID_TERMS = "http://www.w3.org/ns/solid/terms#";
 
 const idOf = (v) => typeof v === "string" ? v : (v && v["@id"]) || null;
@@ -518,6 +525,73 @@ export async function createGallery({ webid, name }) {
   await ensureContainer(containerUrl);
   await addTypeRegistration(ti.typeIndexUrl, { forClass: IMAGE_CLASSES[0], instanceContainer: containerUrl });
   return { url: containerUrl };
+}
+
+// ---- Pod-stored apps list (urn:solid:App) ----------------------------------
+// The user's "installed apps" live in a single JSON-LD doc on the pod,
+// registered in their TypeIndex with forClass: urn:solid:App. The doc shape
+// is schema:ItemList — each itemListElement is { @id: <module URL> }.
+// Rationale: one-doc keeps TypeIndex tidy; sharing a list = sharing one URL.
+
+const APPS_DOC_PATH = "hub/apps/list.jsonld";
+
+function appsDocUrl(storage) {
+  return storage + APPS_DOC_PATH;
+}
+
+/**
+ * Find the apps-list registration in a TypeIndex, fetch the doc, and
+ * return the list of app URLs. Returns null if the registration is
+ * missing — caller should treat that as "not yet synced to pod" and
+ * fall back to localStorage.
+ */
+export async function getAppsList(webid) {
+  const ti = await fetchTypeIndex(webid).catch(() => null);
+  if (!ti) return null;
+  const reg = ti.registrations.find(r => r.forClass === APP_CLASS && r.instance);
+  if (!reg) return null;
+  const doc = await getJsonLd(reg.instance.replace(/#.*$/, "")).catch(() => null);
+  if (!doc) return { url: reg.instance, items: [] };
+  const subj = findSubject(doc, reg.instance.includes("#") ? reg.instance.split("#")[1] : null);
+  const elements = subj["schema:itemListElement"]
+                ?? subj["http://schema.org/itemListElement"]
+                ?? subj["https://schema.org/itemListElement"]
+                ?? subj["itemListElement"]
+                ?? [];
+  const arr = Array.isArray(elements) ? elements : [elements];
+  const items = arr.map(e => idOf(e)).filter(Boolean);
+  return { url: reg.instance, items };
+}
+
+/**
+ * Write the apps list to the pod and ensure a TypeRegistration points
+ * at it. Idempotent — call any time. Returns the doc URL.
+ */
+export async function saveAppsList(webid, urls) {
+  const storage = await discoverStorage(webid);
+  if (!storage) throw new Error("Couldn't find your pod root");
+  await ensureContainer(`${storage}hub/`).catch(() => {});
+  await ensureContainer(`${storage}hub/apps/`).catch(() => {});
+  const dataUrl = appsDocUrl(storage);
+  const doc = {
+    "@context": { "schema": "https://schema.org/", "urn": "urn:solid:" },
+    "@id": "#this",
+    "@type": "schema:ItemList",
+    "schema:name": "Installed apps",
+    "schema:itemListElement": (urls || []).map(u => ({ "@id": u, "@type": "urn:App" })),
+  };
+  await putJsonLd(dataUrl, doc);
+
+  // Add the registration if not already present.
+  const ti = await fetchTypeIndex(webid).catch(() => null);
+  const has = ti?.registrations.some(r => r.forClass === APP_CLASS && r.instance);
+  if (ti && !has) {
+    await addTypeRegistration(ti.typeIndexUrl, {
+      forClass: APP_CLASS,
+      instance: dataUrl + "#this",
+    });
+  }
+  return dataUrl + "#this";
 }
 
 /** Convert a fetcher 404 to null at higher level. Internal use. */
