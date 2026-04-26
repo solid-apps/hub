@@ -158,16 +158,56 @@ export function adapt(obj, idOrUrl) {
   return {
     meta: { ...baseMeta, name: baseMeta.name || `LOSOS pane (${idOrUrl})` },
     canHandle(input) {
-      const subject = { value: input?.url };
-      const store = {
-        type: () => input?.forClass || input?.doc?.["@type"] || null,
-        get: () => null,
-      };
+      const subject = makeSubject(input);
+      const store = makeStore(input);
       try { return obj.canHandle(subject, store); } catch { return false; }
     },
     async render(input, container, _ctx) {
-      const subject = { value: input?.url };
-      return obj.render(subject, null, container, input?.doc || null);
+      // Bridge SLIP-48 CustomEvents → hub's input.onChange / input.onDelete /
+      // input.onOpen callbacks. Panes that emit pane:change / pane:delete /
+      // pane:open on their container get their callbacks wired up automatically.
+      const onChange = (e) => input?.onChange?.(e?.detail);
+      const onDelete = (e) => input?.onDelete?.(e?.detail);
+      const onOpen   = (e) => input?.onOpen?.(e?.detail?.url, e?.detail?.type);
+      container.addEventListener("pane:change", onChange);
+      container.addEventListener("pane:delete", onDelete);
+      container.addEventListener("pane:open",   onOpen);
+      const subject = makeSubject(input);
+      const store = makeStore(input);
+      return obj.render(subject, store, container, input?.doc || null);
+    },
+  };
+}
+
+/** Build an rdflib-shaped subject from hub's input. */
+function makeSubject(input) {
+  return { value: input?.url || null, termType: "NamedNode" };
+}
+
+/**
+ * Build a minimal store that satisfies the two query patterns LOSOS panes
+ * commonly use for type-detection: `store.type(subject)` and
+ * `store.statementsMatching(subject, undefined, undefined)`. Hub passes
+ * `forClass` from the TypeRegistration; the store reflects that as a
+ * single rdf:type statement so pane canHandle code that expects either
+ * surface works.
+ */
+const RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
+function makeStore(input) {
+  const cls = input?.forClass || (typeof input?.doc?.["@type"] === "string" ? input.doc["@type"] : null);
+  return {
+    type: () => cls,
+    get: () => null,
+    statementsMatching(_subject, predicate, _object) {
+      if (!cls) return [];
+      if (predicate === undefined || predicate?.value === RDF_TYPE) {
+        return [{
+          subject:   { value: input?.url || null,  termType: "NamedNode" },
+          predicate: { value: RDF_TYPE,            termType: "NamedNode" },
+          object:    { value: cls,                 termType: "NamedNode" },
+        }];
+      }
+      return [];
     },
   };
 }

@@ -39,16 +39,14 @@ export async function render(container, ctx) {
   }
   if (!profile) { renderEmpty(page, { title: "WebID returned no profile data" }); return; }
 
-  const pane = findFor({ url: webIdUrl, profile, raw, forClass: FOAF_PERSON, mode: "full" });
+  const input = { url: webIdUrl, doc: { profile, raw, mode: "full" }, forClass: FOAF_PERSON };
+  const pane = findFor(input);
   if (!pane) {
     renderEmpty(page, { title: "No pane registered for foaf:Person" });
     return;
   }
 
-  await pane.render({
-    url: webIdUrl, profile, raw, forClass: FOAF_PERSON, mode: "full",
-    onChange: () => {},
-  }, page, ctx);
+  await pane.render(input, page, ctx);
 }
 
 export const meta = { name: "Profile", icon: ICON.user, hasSidebar: true };

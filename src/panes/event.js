@@ -9,25 +9,32 @@
 import { putJsonLd, deleteResource, CALENDAR_CLASSES } from "../pod.js";
 import { ICON, escape, debounce, showToast } from "../ui.js";
 
+export const label = "Event";
+export const icon  = "📅";
 export const meta = {
   id: "hub-pod/event",
   name: "Event detail",
   forClasses: CALENDAR_CLASSES,
 };
 
-export function canHandle(input) {
-  if (CALENDAR_CLASSES.includes(input?.forClass)) return true;
-  const t = input?.doc?.["@type"];
-  const matches = (s) =>
-    s === "Vevent" || s === "Event" ||
-    (typeof s === "string" && /[#/](Vevent|Event)$/.test(s));
-  if (typeof t === "string") return matches(t);
-  if (Array.isArray(t)) return t.some(matches);
-  return !!input?.doc?.dtstart;
+const RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
+
+export function canHandle(subject, store) {
+  if (subject?.termType && subject.termType !== "NamedNode") return false;
+  if (!store?.statementsMatching) return false;
+  const stmts = store.statementsMatching(subject, undefined, undefined);
+  return stmts.some(s => {
+    if (s.predicate?.value !== RDF_TYPE) return false;
+    const v = s.object?.value;
+    return CALENDAR_CLASSES.includes(v) ||
+           v === "Vevent" || v === "Event" ||
+           (typeof v === "string" && /[#/](Vevent|Event)$/.test(v));
+  });
 }
 
-export async function render(input, container, _ctx) {
-  const { url, doc, onChange, onDelete } = input;
+export async function render(subject, _store, container, rawData) {
+  const url = subject?.value;
+  const doc = rawData;
   if (!doc) {
     container.innerHTML = `<div class="empty">Failed to load event</div>`;
     return;
@@ -38,7 +45,7 @@ export async function render(input, container, _ctx) {
     doc.location = container.querySelector("#ev-location")?.value ?? doc.location;
     try {
       await putJsonLd(url.replace(/#.*$/, ""), doc);
-      onChange?.();
+      container.dispatchEvent(new CustomEvent("pane:change", { detail: { url, doc } }));
     } catch (e) {
       showToast("Save failed: " + e.message, "error");
     }
@@ -72,9 +79,11 @@ export async function render(input, container, _ctx) {
     try {
       await deleteResource(url.replace(/#.*$/, ""));
       showToast("Event deleted", "success");
-      onDelete?.();
+      container.dispatchEvent(new CustomEvent("pane:delete", { detail: { url } }));
     } catch (e) {
       showToast("Delete failed: " + e.message, "error");
     }
   });
 }
+
+export default { label, icon, canHandle, render };

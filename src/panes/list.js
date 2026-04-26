@@ -26,20 +26,26 @@ const ITEMLIST_CLASSES = [
   "http://schema.org/ItemList",
   "https://schema.org/ItemList",
 ];
+const RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
 
+export const label = "List";
+export const icon  = "✅";
 export const meta = {
   id: "hub-pod/list",
   name: "Todo list",
   forClasses: ITEMLIST_CLASSES,
 };
 
-export function canHandle(input) {
-  if (ITEMLIST_CLASSES.includes(input?.forClass)) return true;
-  const t = input?.doc?.["@type"];
-  const matches = (s) => typeof s === "string" && (s === "ItemList" || /[#/:]ItemList$/.test(s) || /(?:^|:)ItemList$/.test(s));
-  if (typeof t === "string") return matches(t);
-  if (Array.isArray(t)) return t.some(matches);
-  return false;
+export function canHandle(subject, store) {
+  if (subject?.termType && subject.termType !== "NamedNode") return false;
+  if (!store?.statementsMatching) return false;
+  const stmts = store.statementsMatching(subject, undefined, undefined);
+  return stmts.some(s => {
+    if (s.predicate?.value !== RDF_TYPE) return false;
+    const v = s.object?.value;
+    return ITEMLIST_CLASSES.includes(v) ||
+           (typeof v === "string" && (v === "ItemList" || /[#/:]ItemList$/.test(v) || /(?:^|:)ItemList$/.test(v)));
+  });
 }
 
 // Look up a property by any of the common key forms (bare, prefixed, full IRI).
@@ -56,8 +62,9 @@ const STATUS_KEYS = ["schema:status", "status", "schema:actionStatus", "actionSt
 const DATE_KEYS = ["schema:dateCreated", "dateCreated", "https://schema.org/dateCreated", "http://schema.org/dateCreated"];
 const ELEMENTS_KEYS = ["schema:itemListElement", "itemListElement", "https://schema.org/itemListElement", "http://schema.org/itemListElement"];
 
-export async function render(input, container, _ctx) {
-  const { url, doc, onChange } = input;
+export async function render(subject, _store, container, rawData) {
+  const url = subject?.value;
+  const doc = rawData;
   if (!doc) {
     container.innerHTML = `<div class="empty">Failed to load list</div>`;
     return;
@@ -143,7 +150,7 @@ export async function render(input, container, _ctx) {
     });
     try {
       await putJsonLd(url.replace(/#.*$/, ""), doc);
-      onChange?.();
+      container.dispatchEvent(new CustomEvent("pane:change", { detail: { url, doc } }));
     } catch (e) {
       showToast("Save failed: " + e.message, "error");
     }
@@ -330,3 +337,5 @@ function injectStyles() {
 `;
   document.head.appendChild(s);
 }
+
+export default { label, icon, canHandle, render };

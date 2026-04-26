@@ -87,12 +87,16 @@ async function load() {
   items.forEach(it => {
     const slot = document.createElement("div");
     grid.appendChild(slot);
-    const pane = findFor({ url: it.url, type: it.type });
     const onOpen = (url, type) => {
       if (type === "container") { currentDir = url; load(); }
       else window.open(url, "_blank");
     };
-    if (pane) pane.render({ url: it.url, type: it.type, onOpen }, slot);
+    const ldpClass = it.type === "container"
+      ? "http://www.w3.org/ns/ldp#Container"
+      : "http://www.w3.org/ns/ldp#Resource";
+    const input = { url: it.url, doc: { type: it.type }, forClass: ldpClass, onOpen };
+    const pane = findFor(input);
+    if (pane) pane.render(input, slot);
     else slot.outerHTML = `<div class="file-card other"><div class="fi">${ICON.doc}</div><div class="fn">${escape(it.url)}</div></div>`;
   });
 }

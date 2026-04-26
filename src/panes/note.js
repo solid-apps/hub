@@ -11,29 +11,34 @@
  */
 
 import { putJsonLd, deleteResource, NOTE_CLASSES } from "../pod.js";
-import { ICON, escape, fmtRel, debounce, showToast, $ } from "../ui.js";
+import { ICON, escape, fmtRel, debounce, showToast } from "../ui.js";
 
+export const label = "Note";
+export const icon  = "📄";
 export const meta = {
   id: "hub-pod/note",
   name: "Note (markdown)",
   forClasses: NOTE_CLASSES,
 };
 
-export function canHandle(input) {
-  if (NOTE_CLASSES.includes(input?.forClass)) return true;
-  const t = input?.doc?.["@type"];
-  const matches = (s) =>
-    s === "TextDocument" ||
-    s === "Article" ||
-    s === "CreativeWork" ||
-    (typeof s === "string" && /[#/](TextDocument|Article|CreativeWork)$/.test(s));
-  if (typeof t === "string") return matches(t);
-  if (Array.isArray(t)) return t.some(matches);
-  return false;
+const RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
+
+export function canHandle(subject, store) {
+  if (subject?.termType && subject.termType !== "NamedNode") return false;
+  if (!store?.statementsMatching) return false;
+  const stmts = store.statementsMatching(subject, undefined, undefined);
+  return stmts.some(s => {
+    if (s.predicate?.value !== RDF_TYPE) return false;
+    const v = s.object?.value;
+    return NOTE_CLASSES.includes(v) ||
+           v === "TextDocument" || v === "Article" || v === "CreativeWork" ||
+           (typeof v === "string" && /[#/](TextDocument|Article|CreativeWork)$/.test(v));
+  });
 }
 
-export async function render(input, container, _ctx) {
-  const { url, doc, onChange, onDelete } = input;
+export async function render(subject, _store, container, rawData) {
+  const url = subject?.value;
+  const doc = rawData;
   if (!doc) {
     container.innerHTML = `<div class="empty">Failed to load note: <code>${escape(url)}</code></div>`;
     return;
@@ -47,7 +52,7 @@ export async function render(input, container, _ctx) {
     try {
       await putJsonLd(url, doc);
       setStatus("saved");
-      onChange?.();
+      container.dispatchEvent(new CustomEvent("pane:change", { detail: { url, doc } }));
     } catch (e) {
       setStatus("err", e.message);
     }
@@ -73,7 +78,7 @@ export async function render(input, container, _ctx) {
       try {
         await deleteResource(url);
         showToast("Deleted", "success");
-        onDelete?.();
+        container.dispatchEvent(new CustomEvent("pane:delete", { detail: { url } }));
       } catch (e) {
         showToast("Delete failed: " + e.message, "error");
       }
@@ -88,3 +93,5 @@ export async function render(input, container, _ctx) {
     else if (kind === "err") { el.className = "err"; el.textContent = "save error: " + (msg || ""); }
   }
 }
+
+export default { label, icon, canHandle, render };

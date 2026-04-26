@@ -77,16 +77,17 @@ export async function render(container, ctx) {
     const slot = document.createElement("div");
     grid.appendChild(slot);
     // Initial placeholder via the pane (no profile yet)
-    const pane = findFor({ url: wid, forClass: FOAF_PERSON, mode: "card" });
+    const placeholder = { url: wid, doc: { mode: "card" }, forClass: FOAF_PERSON };
+    const pane = findFor(placeholder);
     if (!pane) {
       slot.outerHTML = `<div class="contact-card"><div class="ava">?</div><div class="name">No PersonPane</div><div class="webid">${escape(wid)}</div></div>`;
       return;
     }
-    pane.render({ url: wid, forClass: FOAF_PERSON, mode: "card" }, slot, ctx);
+    pane.render(placeholder, slot, ctx);
     // Then upgrade with the real profile
     try {
       const profile = await fetchWebIdProfile(wid);
-      pane.render({ url: wid, profile, forClass: FOAF_PERSON, mode: "card" }, slot, ctx);
+      pane.render({ url: wid, doc: { profile, mode: "card" }, forClass: FOAF_PERSON }, slot, ctx);
     } catch {
       // leave placeholder
     }

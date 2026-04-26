@@ -3,23 +3,35 @@
  * file-card tile. Used by the Files app (and anywhere a directory
  * listing is shown).
  *
- * Input:
- *   { url, type: "container" | "resource", onOpen?: (url, type) => void }
+ * subject: rdflib NamedNode whose value is the resource URL.
+ * rawData: { type: "container" | "resource" }
  *
- * Click on a container fires onOpen — Files uses it to navigate.
- * Click on a resource opens the URL in a new tab.
+ * Click on a container fires a `pane:open` CustomEvent — Files uses
+ * it to navigate. Click on a resource opens the URL in a new tab.
  */
 
 import { ICON, escape } from "../ui.js";
 
+export const label = "File";
+export const icon  = "📁";
 export const meta = { id: "hub-pod/file", name: "File / folder card" };
 
-export function canHandle(input) {
-  return !!input?.url && (input.type === "container" || input.type === "resource");
+const LDP_CONTAINER = "http://www.w3.org/ns/ldp#Container";
+const LDP_RESOURCE  = "http://www.w3.org/ns/ldp#Resource";
+
+export function canHandle(subject, store) {
+  if (subject?.termType && subject.termType !== "NamedNode") return false;
+  if (!subject?.value || !store?.statementsMatching) return false;
+  const stmts = store.statementsMatching(subject, undefined, undefined);
+  return stmts.some(s => {
+    if (s.predicate?.value !== "http://www.w3.org/1999/02/22-rdf-syntax-ns#type") return false;
+    return s.object?.value === LDP_CONTAINER || s.object?.value === LDP_RESOURCE;
+  });
 }
 
-export async function render(input, container, _ctx) {
-  const { url, type, onOpen } = input;
+export async function render(subject, _store, container, rawData) {
+  const url = subject?.value;
+  const type = rawData?.type;
   const isDir = type === "container";
   const name = decodeURIComponent(url.replace(/\/$/, "").split("/").pop() || url);
   const cls = isDir ? "dir" : extClass(name);
@@ -34,8 +46,11 @@ export async function render(input, container, _ctx) {
     <div class="fs">${isDir ? "folder" : ""}</div>
   `;
   container.addEventListener("click", () => {
-    if (onOpen) onOpen(url, type);
-    else if (!isDir) window.open(url, "_blank");
+    if (isDir) {
+      container.dispatchEvent(new CustomEvent("pane:open", { detail: { url, type } }));
+    } else {
+      window.open(url, "_blank");
+    }
   });
 }
 
@@ -52,3 +67,5 @@ function extIcon(name) {
   if (c === "code") return ICON.code;
   return ICON.doc;
 }
+
+export default { label, icon, canHandle, render };

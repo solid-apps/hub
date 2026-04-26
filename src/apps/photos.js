@@ -179,10 +179,11 @@ function drawGalleries() {
     grid.style.padding = "0";
     section.appendChild(grid);
     g.images.forEach(img => {
-      const pane = findFor({ src: img.src, title: img.title });
+      const input = { url: img.src, doc: { title: img.title } };
+      const pane = findFor(input);
       const tile = document.createElement("div");
       grid.appendChild(tile);
-      if (pane) pane.render({ src: img.src, title: img.title }, tile);
+      if (pane) pane.render(input, tile);
       else tile.outerHTML = `<div class="photo" data-src="${escape(img.src)}"><img src="${escape(img.src)}" loading="lazy"></div>`;
     });
     body.appendChild(section);

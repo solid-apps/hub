@@ -38,12 +38,12 @@ if (localStorage.getItem("hubpod-use-pilot-tracker") === "1") {
   registerPane(PilotTrackerPane);
 }
 registerPane(adapt(TrackerPane, "hub-pod/tracker"));
-registerPane(ListPane);
-registerPane(NotePane);
-registerPane(EventPane);
-registerPane(PhotoPane);
-registerPane(PersonPane);
-registerPane(FilePane);
+registerPane(adapt(ListPane,    "hub-pod/list"));
+registerPane(adapt(NotePane,    "hub-pod/note"));
+registerPane(adapt(EventPane,   "hub-pod/event"));
+registerPane(adapt(PhotoPane,   "hub-pod/photo"));
+registerPane(adapt(PersonPane,  "hub-pod/person"));
+registerPane(adapt(FilePane,    "hub-pod/file"));
 
 const APPS = [
   { id: "home",     mod: Home },

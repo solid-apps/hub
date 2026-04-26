@@ -1,47 +1,49 @@
 /**
  * person.js — pane for foaf:Person profiles.
  *
- * Two render modes via input.mode:
- *   - "full" (default): the editable hero card used by the Profile app.
- *     Click any field to edit; save on blur PUTs the WebID document
- *     back. (Note: on HTML WebID pods that's still a footgun — the
- *     full HTML page is replaced. A pilot-style island-preserving PUT
- *     is a future addition.)
- *   - "card": the compact card used by Contacts grid. Click → open the
- *     WebID URL in a new tab.
- *
- * Input:
- *   { url, doc?, profile?, raw?, forClass, mode, onChange? }
+ * subject: rdflib NamedNode whose value is the WebID URL.
+ * rawData: { profile, raw?, mode? }
  *   - profile: normalized fields { name, nick, email, homepage, img, bio }
  *   - raw:     full WebID JSON-LD (needed for editable mode to PUT back)
+ *   - mode:    "full" (default) → editable hero card; "card" → compact contact tile.
+ *
+ * Edit-mode saves PUT the WebID back via putJsonLdSmart (HTML-island
+ * preserving for SolidOS-style WebIDs). Save fires `pane:change` on
+ * the container.
  */
 
 import { putJsonLdSmart, findSubject } from "../pod.js";
 import { ICON, escape, initials, showToast, $$, avatarHTML } from "../ui.js";
 
 const FOAF_PERSON = "http://xmlns.com/foaf/0.1/Person";
+const RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
 
+export const label = "Person";
+export const icon  = "👤";
 export const meta = {
   id: "hub-pod/person",
   name: "Person profile",
   forClass: FOAF_PERSON,
 };
 
-export function canHandle(input) {
-  if (input?.forClass === FOAF_PERSON) return true;
-  const t = input?.doc?.["@type"] ?? input?.profile?.["@type"];
-  const matches = (s) =>
-    s === "Person" || s === "foaf:Person" || s === "schema:Person" ||
-    (typeof s === "string" && /[#/]Person$/.test(s));
-  if (typeof t === "string") return matches(t);
-  if (Array.isArray(t)) return t.some(matches);
-  return false;
+export function canHandle(subject, store) {
+  if (subject?.termType && subject.termType !== "NamedNode") return false;
+  if (!store?.statementsMatching) return false;
+  const stmts = store.statementsMatching(subject, undefined, undefined);
+  return stmts.some(s => {
+    if (s.predicate?.value !== RDF_TYPE) return false;
+    const v = s.object?.value;
+    return v === FOAF_PERSON || v === "Person" || v === "foaf:Person" || v === "schema:Person" ||
+           (typeof v === "string" && /[#/]Person$/.test(v));
+  });
 }
 
-export async function render(input, container, _ctx) {
-  const mode = input.mode || "full";
-  if (mode === "card") return renderCard(input, container);
-  return renderFull(input, container);
+export async function render(subject, _store, container, rawData) {
+  const url = subject?.value;
+  const data = rawData || {};
+  const mode = data.mode || "full";
+  if (mode === "card") return renderCard(url, data, container);
+  return renderFull(url, data, container);
 }
 
 const FIELDS = [
@@ -52,8 +54,8 @@ const FIELDS = [
   { key: "img",      label: "Avatar",   pred: "http://xmlns.com/foaf/0.1/img" },
 ];
 
-function renderFull(input, container) {
-  const { url, profile, raw, onChange } = input;
+function renderFull(url, data, container) {
+  const { profile, raw } = data;
   if (!profile) { container.innerHTML = `<div class="empty">No profile.</div>`; return; }
 
   draw();
@@ -122,13 +124,9 @@ function renderFull(input, container) {
     profile[f.key] = value || undefined;
     showToast("Saving…");
     try {
-      // Smart PUT: if the WebID document is HTML with a JSON-LD island
-      // (SolidOS-style WebIDs like melvin.me), splice the new JSON into
-      // the island and PUT the entire HTML back, preserving every byte
-      // outside it. Plain JSON-LD pods get a normal PUT.
       await putJsonLdSmart(url.replace(/#.*$/, ""), raw);
       showToast("Saved", "success");
-      onChange?.();
+      container.dispatchEvent(new CustomEvent("pane:change", { detail: { url, doc: raw } }));
     } catch (e) {
       showToast("Save failed: " + e.message, "error");
     }
@@ -136,8 +134,8 @@ function renderFull(input, container) {
   }
 }
 
-function renderCard(input, container) {
-  const { url, profile } = input;
+function renderCard(url, data, container) {
+  const { profile } = data;
   const name = profile?.name || "Loading…";
   container.className = "contact-card";
   container.innerHTML = `
@@ -150,3 +148,5 @@ function renderCard(input, container) {
   container.style.cursor = "pointer";
   container.addEventListener("click", () => window.open(url, "_blank"));
 }
+
+export default { label, icon, canHandle, render };
