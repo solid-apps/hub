@@ -97,6 +97,7 @@ export async function render(container, ctx) {
                       <div><span style="color:var(--text-faint)">forClass:</span> ${escape(r.forClass)}</div>
                       ${r.instance ? `<div style="word-break:break-all"><span style="color:var(--text-faint)">instance:</span> ${escape(r.instance)}</div>` : ""}
                       ${r.instanceContainer ? `<div style="word-break:break-all"><span style="color:var(--text-faint)">instanceContainer:</span> ${escape(r.instanceContainer)}</div>` : ""}
+                      ${r.view ? `<div style="word-break:break-all;color:var(--accent)"><span style="color:var(--text-faint)">urn:solid:view:</span> ${escape(r.view)}</div>` : ""}
                     </div>
                   `).join("")}
                 </div>

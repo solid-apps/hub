@@ -11,7 +11,7 @@ import {
   fetchTypeIndex, findRegistrations, TRACKER_CLASS,
   getJsonLd,
 } from "../pod.js";
-import { findFor } from "../panes.js";
+import { resolveFor } from "../panes.js";
 import { ICON, escape, $, $$, requireSolid } from "../ui.js";
 
 let typeIndex = null;
@@ -70,13 +70,15 @@ export async function render(container, ctx) {
   trackers = await Promise.all(regs.map(async r => {
     try {
       const doc = await getJsonLd(r.instance.replace(/#.*$/, ""));
-      return { url: r.instance, doc };
+      return { url: r.instance, doc, view: r.view };
     } catch (e) {
-      return { url: r.instance, doc: null, error: e.message };
+      return { url: r.instance, doc: null, error: e.message, view: r.view };
     }
   }));
 
   // Empty out the body and let panes render each tracker into its own slot.
+  // Each tracker can opt into a specific external pane via urn:solid:view
+  // on its TypeRegistration; otherwise the registered built-in is used.
   const body = $("#tasks-body");
   body.innerHTML = "";
   for (let i = 0; i < trackers.length; i++) {
@@ -84,16 +86,18 @@ export async function render(container, ctx) {
     const slot = document.createElement("div");
     slot.dataset.trackerIdx = i;
     body.appendChild(slot);
-    const pane = findFor({ url: t.url, doc: t.doc, forClass: TRACKER_CLASS });
+    const input = { url: t.url, doc: t.doc, forClass: TRACKER_CLASS, view: t.view };
+    const pane = await resolveFor(input);
     if (pane) {
       try {
-        await pane.render({ url: t.url, doc: t.doc, forClass: TRACKER_CLASS }, slot, ctx);
+        await pane.render(input, slot, ctx);
       } catch (e) {
         slot.innerHTML = `<div class="card" style="color:var(--danger)">Pane error: ${escape(e.message)}</div>`;
       }
     } else {
       slot.innerHTML = `<div class="card" style="color:var(--text-dim)">
-        No pane registered for <code>${escape(TRACKER_CLASS)}</code>.
+        No pane available for <code>${escape(TRACKER_CLASS)}</code>.
+        ${t.view ? `<div style="margin-top:6px;font-size:12px">External view URL: <code>${escape(t.view)}</code> failed to load.</div>` : ""}
         <div style="margin-top:6px;font-size:12px;color:var(--text-faint);font-family:var(--mono);word-break:break-all">${escape(t.url)}</div>
       </div>`;
     }

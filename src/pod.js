@@ -292,12 +292,17 @@ export async function fetchTypeIndex(webid) {
     forClass:          idOf(n["solid:forClass"]          ?? n[SOLID_TERMS + "forClass"]),
     instance:          idOf(n["solid:instance"]          ?? n[SOLID_TERMS + "instance"]),
     instanceContainer: idOf(n["solid:instanceContainer"] ?? n[SOLID_TERMS + "instanceContainer"]),
+    // urn:solid:view — the SolidOS pane convention. Per urn-solid.com, links
+    // a resource or class to an ES module URL whose default export renders it.
+    // Accept the full URN, a bare-key alias, and the w3id solidos sameAs IRI.
+    view:              idOf(n["urn:solid:view"] ?? n["view"] ?? n["http://w3id.org/solidos#view"]),
   })).filter(r => r.forClass && (r.instance || r.instanceContainer));
 
-  // Resolve any relative instance/instanceContainer URLs against the TypeIndex URL.
+  // Resolve any relative URLs against the TypeIndex URL.
   registrations.forEach(r => {
     if (r.instance && !/^https?:/.test(r.instance)) r.instance = new URL(r.instance, tiUrl).href;
     if (r.instanceContainer && !/^https?:/.test(r.instanceContainer)) r.instanceContainer = new URL(r.instanceContainer, tiUrl).href;
+    if (r.view && !/^https?:/.test(r.view)) r.view = new URL(r.view, tiUrl).href;
   });
 
   return { typeIndexUrl: tiUrl, registrations };
