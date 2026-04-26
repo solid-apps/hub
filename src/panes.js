@@ -25,22 +25,65 @@
  * later if we want them.
  */
 
+import { getPaneDefaults, savePaneDefaults } from "./pod.js";
+
 const registry = [];
 
-// Per-class user preferences: { classIRI: paneId }. Persisted in localStorage
-// so the choice survives reloads. Pane id matches what `meta.id` returns
-// from listRegistered() — could be a built-in id like "hub-pod/tracker" or
-// a URL for externally loaded panes.
+// Per-class user preferences: { classIRI: paneId }. Persisted in two places:
+//   - localStorage (boot cache, signed-out source of truth)
+//   - The user's pod (canonical when signed in), as a urn:solid:PaneDefaults
+//     registration in their TypeIndex.
+// Pane id matches what `meta.id` returns from listRegistered() — could be a
+// built-in id like "hub-pod/tracker" or a URL for externally loaded panes.
 let classDefaults = {};
 try { classDefaults = JSON.parse(localStorage.getItem("hubpod-pane-defaults") || "{}"); }
 catch { classDefaults = {}; }
 
+function writeCache() {
+  localStorage.setItem("hubpod-pane-defaults", JSON.stringify(classDefaults));
+}
+
 export function getClassDefaults() { return { ...classDefaults }; }
-export function setClassDefault(classIRI, paneId) {
+
+/**
+ * Set (or unset, if paneId is falsy) the default pane for a class.
+ * If a webid is supplied, write through to the pod as well.
+ */
+export async function setClassDefault(classIRI, paneId, webid = null) {
   if (!classIRI) return;
   if (paneId) classDefaults[classIRI] = paneId;
   else delete classDefaults[classIRI];
-  localStorage.setItem("hubpod-pane-defaults", JSON.stringify(classDefaults));
+  writeCache();
+  if (webid) {
+    try { await savePaneDefaults(webid, classDefaults); }
+    catch (e) { console.warn("setClassDefault: pod write failed", e); }
+  }
+}
+
+/**
+ * Pull pane defaults from the pod and update the cache. Returns
+ * { source, defaults, changed } — same shape as apps.syncFromPod.
+ */
+export async function syncDefaultsFromPod(webid) {
+  if (!webid) return { source: "local", defaults: { ...classDefaults }, changed: false };
+  let result;
+  try { result = await getPaneDefaults(webid); }
+  catch { result = null; }
+  if (!result) return { source: "none", defaults: { ...classDefaults }, changed: false };
+  const before = JSON.stringify(classDefaults);
+  const after = JSON.stringify(result.defaults);
+  if (before !== after) {
+    classDefaults = { ...result.defaults };
+    writeCache();
+  }
+  return { source: "pod", defaults: { ...classDefaults }, changed: before !== after };
+}
+
+/** Push the current localStorage map to the pod. */
+export async function syncDefaultsToPod(webid) {
+  if (!webid) throw new Error("Need a WebID to sync to pod");
+  await savePaneDefaults(webid, classDefaults);
+  return { ...classDefaults };
 }
 
 export function register(pane) {

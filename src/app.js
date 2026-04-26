@@ -18,7 +18,7 @@ import * as Activity from "./apps/activity.js";
 import * as Settings from "./apps/settings.js";
 
 import { register as registerApp, list as listApps, find as findApp, loadAllExternal, syncFromPod as syncAppsFromPod } from "./apps.js";
-import { findFor as findPane, resolveFor as resolvePane } from "./panes.js";
+import { findFor as findPane, resolveFor as resolvePane, syncDefaultsFromPod } from "./panes.js";
 
 // Register built-in panes. External panes can register themselves via
 // import('./panes.js').then(m => m.register(myPane)).
@@ -267,10 +267,10 @@ async function init() {
     // Re-render current app so it can react to login/logout
     switchApp(state.app);
 
-    // Sync apps list from pod once auth is known. If pod's list differs
-    // from the localStorage cache we just booted from, prompt reload so
-    // the rail picks it up. Solid sessions only — Nostr-only sessions
-    // don't have a TypeIndex.
+    // Sync apps list and pane defaults from pod once auth is known.
+    // Apps changes prompt reload (rail composition); pane defaults
+    // apply silently — they only affect future pane-resolution lookups.
+    // Solid sessions only — Nostr-only sessions don't have a TypeIndex.
     const auth = getAuth();
     if (auth.loggedIn && auth.type === "solid") {
       try {
@@ -285,6 +285,8 @@ async function init() {
       } catch (e) {
         console.warn("apps sync from pod failed:", e);
       }
+      try { await syncDefaultsFromPod(auth.id); }
+      catch (e) { console.warn("pane defaults sync from pod failed:", e); }
     }
   });
 

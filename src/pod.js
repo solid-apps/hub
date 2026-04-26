@@ -294,6 +294,11 @@ export const LIST_CLASSES = [
 // solid:instance points at the apps list doc.
 export const APP_CLASS = "urn:solid:App";
 
+// urn:solid:PaneDefaults — provisional class for "this user's chosen
+// default pane per RDF class." A single doc on the pod, registered in
+// the TypeIndex, mapping classIRI → paneId.
+export const PANE_DEFAULTS_CLASS = "urn:solid:PaneDefaults";
+
 const SOLID_TERMS = "http://www.w3.org/ns/solid/terms#";
 
 const idOf = (v) => typeof v === "string" ? v : (v && v["@id"]) || null;
@@ -588,6 +593,79 @@ export async function saveAppsList(webid, urls) {
   if (ti && !has) {
     await addTypeRegistration(ti.typeIndexUrl, {
       forClass: APP_CLASS,
+      instance: dataUrl + "#this",
+    });
+  }
+  return dataUrl + "#this";
+}
+
+// ---- Pod-stored pane defaults (urn:solid:PaneDefaults) ---------------------
+// Same pattern as apps list — single JSON-LD doc on the pod registered with
+// forClass: urn:solid:PaneDefaults. Each itemListElement carries
+// schema:about (the class IRI) and schema:identifier (the chosen pane id).
+
+const PANE_DEFAULTS_DOC_PATH = "hub/prefs/pane-defaults.jsonld";
+
+function paneDefaultsDocUrl(storage) {
+  return storage + PANE_DEFAULTS_DOC_PATH;
+}
+
+/**
+ * Read the user's pane defaults map from the pod. Returns null when no
+ * registration exists (treat as "not synced yet"). Returns
+ * { url, defaults: {classIRI: paneId} } when found.
+ */
+export async function getPaneDefaults(webid) {
+  const ti = await fetchTypeIndex(webid).catch(() => null);
+  if (!ti) return null;
+  const reg = ti.registrations.find(r => r.forClass === PANE_DEFAULTS_CLASS && r.instance);
+  if (!reg) return null;
+  const doc = await getJsonLd(reg.instance.replace(/#.*$/, "")).catch(() => null);
+  if (!doc) return { url: reg.instance, defaults: {} };
+  const subj = findSubject(doc, reg.instance.includes("#") ? reg.instance.split("#")[1] : null);
+  const elements = subj["schema:itemListElement"]
+                ?? subj["http://schema.org/itemListElement"]
+                ?? subj["https://schema.org/itemListElement"]
+                ?? subj["itemListElement"]
+                ?? [];
+  const arr = Array.isArray(elements) ? elements : [elements];
+  const defaults = {};
+  for (const e of arr) {
+    if (!e || typeof e !== "object") continue;
+    const cls = idOf(e["schema:about"] ?? e["http://schema.org/about"] ?? e["about"]);
+    const pid = e["schema:identifier"] ?? e["http://schema.org/identifier"] ?? e["identifier"];
+    if (typeof cls === "string" && typeof pid === "string") defaults[cls] = pid;
+  }
+  return { url: reg.instance, defaults };
+}
+
+/**
+ * Write the pane defaults map to the pod and ensure a TypeRegistration
+ * points at it. Idempotent.
+ */
+export async function savePaneDefaults(webid, defaults) {
+  const storage = await discoverStorage(webid);
+  if (!storage) throw new Error("Couldn't find your pod root");
+  await ensureContainer(`${storage}hub/`).catch(() => {});
+  await ensureContainer(`${storage}hub/prefs/`).catch(() => {});
+  const dataUrl = paneDefaultsDocUrl(storage);
+  const entries = Object.entries(defaults || {});
+  const doc = {
+    "@context": { "schema": "https://schema.org/", "urn": "urn:solid:" },
+    "@id": "#this",
+    "@type": "urn:PaneDefaults",
+    "schema:name": "Pane defaults (per-class chosen pane)",
+    "schema:itemListElement": entries.map(([cls, pid]) => ({
+      "schema:about": { "@id": cls },
+      "schema:identifier": pid,
+    })),
+  };
+  await putJsonLd(dataUrl, doc);
+  const ti = await fetchTypeIndex(webid).catch(() => null);
+  const has = ti?.registrations.some(r => r.forClass === PANE_DEFAULTS_CLASS && r.instance);
+  if (ti && !has) {
+    await addTypeRegistration(ti.typeIndexUrl, {
+      forClass: PANE_DEFAULTS_CLASS,
       instance: dataUrl + "#this",
     });
   }

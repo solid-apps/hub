@@ -2,10 +2,14 @@
  * Settings — theme, identity, pod info.
  */
 
-import { discoverStorage, hubRoot, fetchTypeIndex, findRegistrations, getAppsList, TRACKER_CLASS, NOTE_CLASSES, CALENDAR_CLASSES, IMAGE_CLASSES, APP_CLASS } from "../pod.js";
+import { discoverStorage, hubRoot, fetchTypeIndex, findRegistrations, getAppsList, getPaneDefaults, TRACKER_CLASS, NOTE_CLASSES, CALENDAR_CLASSES, IMAGE_CLASSES, APP_CLASS, PANE_DEFAULTS_CLASS } from "../pod.js";
 import { logout } from "../auth.js";
 import { ICON, escape, $, $$, showToast } from "../ui.js";
-import { listRegistered, listExternal, loadAndRegister, getClassDefaults, setClassDefault } from "../panes.js";
+import {
+  listRegistered, listExternal, loadAndRegister,
+  getClassDefaults, setClassDefault,
+  syncDefaultsToPod, syncDefaultsFromPod,
+} from "../panes.js";
 import {
   list as listApps,
   listExternal as listExternalApps,
@@ -90,6 +94,18 @@ export async function render(container, ctx) {
             <button class="btn primary" id="pane-load-btn">Load</button>
           </div>
         </div>
+
+        ${ctx.auth.type === "solid" ? `
+          <div class="set-row" style="display:block">
+            <div class="lbl" style="margin-bottom:8px">Pod sync (defaults)</div>
+            <div class="desc" style="margin-bottom:10px">Pane defaults persist on your pod as <code>${escape(PANE_DEFAULTS_CLASS)}</code> in your TypeIndex, so the same class → pane choices apply across browsers.</div>
+            <div id="panes-pod-status" style="font-family:var(--mono);font-size:12px;color:var(--text-dim);margin-bottom:8px">Checking…</div>
+            <div style="display:flex;gap:8px">
+              <button class="btn" id="panes-sync-to-pod-btn">Push localStorage → pod</button>
+              <button class="btn" id="panes-sync-from-pod-btn">Pull pod → localStorage</button>
+            </div>
+          </div>
+        ` : ""}
       </div>
 
       <div class="set-section">
@@ -234,7 +250,8 @@ export async function render(container, ctx) {
   });
 
   // ---- Panes browser ----
-  drawPanesLists();
+  drawPanesLists(ctx);
+  refreshPanesPodStatus(ctx);
 
   $("#pane-load-btn")?.addEventListener("click", async () => {
     const url = $("#pane-load-url")?.value.trim();
@@ -246,7 +263,7 @@ export async function render(container, ctx) {
       const pane = await loadAndRegister(url);
       showToast(`Loaded ${pane.meta?.name || pane.meta?.id || url}`, "success");
       $("#pane-load-url").value = "";
-      drawPanesLists();
+      drawPanesLists(ctx);
     } catch (e) {
       showToast("Load failed: " + e.message, "error");
     } finally {
@@ -289,6 +306,41 @@ export async function render(container, ctx) {
       showToast("Push failed: " + e.message, "error");
     } finally {
       btn.disabled = false; btn.textContent = "Push localStorage → pod";
+    }
+  });
+
+  $("#panes-sync-to-pod-btn")?.addEventListener("click", async () => {
+    const btn = $("#panes-sync-to-pod-btn");
+    btn.disabled = true; btn.textContent = "Pushing…";
+    try {
+      await syncDefaultsToPod(ctx.auth.id);
+      showToast("Pushed pane defaults to pod", "success");
+      refreshPanesPodStatus(ctx);
+    } catch (e) {
+      showToast("Push failed: " + e.message, "error");
+    } finally {
+      btn.disabled = false; btn.textContent = "Push localStorage → pod";
+    }
+  });
+
+  $("#panes-sync-from-pod-btn")?.addEventListener("click", async () => {
+    const btn = $("#panes-sync-from-pod-btn");
+    btn.disabled = true; btn.textContent = "Pulling…";
+    try {
+      const r = await syncDefaultsFromPod(ctx.auth.id);
+      if (r.source === "none") {
+        showToast("No pane-defaults registration found on this pod", "info");
+      } else if (r.changed) {
+        showToast(`Pulled ${Object.keys(r.defaults).length} default${Object.keys(r.defaults).length === 1 ? "" : "s"} from pod`, "success");
+        drawPanesLists(ctx); // re-render selects to reflect new defaults
+      } else {
+        showToast("Already in sync", "success");
+      }
+      refreshPanesPodStatus(ctx);
+    } catch (e) {
+      showToast("Pull failed: " + e.message, "error");
+    } finally {
+      btn.disabled = false; btn.textContent = "Pull pod → localStorage";
     }
   });
 
@@ -338,7 +390,29 @@ async function refreshAppsPodStatus(ctx) {
   }
 }
 
-function drawPanesLists() {
+async function refreshPanesPodStatus(ctx) {
+  const el = $("#panes-pod-status");
+  if (!el || ctx.auth.type !== "solid") return;
+  el.textContent = "Checking…";
+  try {
+    const r = await getPaneDefaults(ctx.auth.id);
+    if (!r) {
+      el.innerHTML = `<span style="color:var(--text-faint)">No <code>${escape(PANE_DEFAULTS_CLASS)}</code> registration on pod yet — push to create it.</span>`;
+      return;
+    }
+    const cache = getClassDefaults();
+    const same = JSON.stringify(cache) === JSON.stringify(r.defaults);
+    const podCount = Object.keys(r.defaults).length;
+    el.innerHTML = `<div style="color:var(--good)">✓ Pod has ${podCount} default${podCount === 1 ? "" : "s"} at <code style="word-break:break-all">${escape(r.url)}</code></div>` +
+                   (same
+                     ? `<div style="color:var(--text-faint);margin-top:4px">In sync with localStorage.</div>`
+                     : `<div style="color:var(--warning);margin-top:4px">Differs from localStorage (${Object.keys(cache).length} cached).</div>`);
+  } catch (e) {
+    el.innerHTML = `<span style="color:var(--danger)">Couldn't check pod: ${escape(e.message)}</span>`;
+  }
+}
+
+function drawPanesLists(ctx) {
   const panes = listRegistered();
   const reg = $("#panes-registered-list");
   if (reg) {
@@ -383,8 +457,11 @@ function drawPanesLists() {
           </select>
         </div>
       `).join("");
-      $$("[data-default-class]", picker).forEach(el => el.addEventListener("change", () => {
-        setClassDefault(el.dataset.defaultClass, el.value || null);
+      $$("[data-default-class]", picker).forEach(el => el.addEventListener("change", async () => {
+        const webid = ctx?.auth?.type === "solid" ? ctx.auth.id : null;
+        try { await setClassDefault(el.dataset.defaultClass, el.value || null, webid); }
+        catch (e) { showToast("Save default failed: " + e.message, "error"); }
+        if (webid) refreshPanesPodStatus(ctx);
       }));
     }
   }
