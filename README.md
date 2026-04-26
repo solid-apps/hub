@@ -60,7 +60,15 @@ register(MyPane);
 
 Apps look up a pane per discovered subject via `findFor(input)`. The first registered pane whose `canHandle` returns true wins, so registering an external pane *before* the built-in one swaps the renderer without touching the app shell.
 
-`src/panes/pilot-tracker.js` is a worked example: it lazy-loads pilot's `tracker-pane.js` (a LOSOS-style Preact pane), adapts hub-pod's input shape to pilot's `render(subject, store, container, rawData)`, and replaces the built-in tracker pane when toggled on in Settings → Panes. The pilot pane brings its own `.tp-*` styles, so it looks different — that's intentional.
+### Three options for the Tracker pane
+
+To make pane evolution concrete, hub ships three ways to render `wf:Tracker`:
+
+1. **Default — `src/panes/tracker.js`**: hub's own copy, vendored byte-for-byte from pilot's `tracker-pane.js`. Will evolve here independently of pilot. LOSOS-shape exports are wrapped via `adapt()` at register time so the registry sees a hub-shaped pane.
+2. **Toggle in Settings → Panes**: registers `src/panes/pilot-tracker.js` first, which lazy-loads `https://solid-apps.github.io/pilot/tracker-pane.js` at runtime. Useful for comparing hub's diverging copy against the upstream.
+3. **Per-registration `urn:solid:view`** (described below): pin a specific tracker to a specific renderer URL on your pod. Highest priority — wins over both 1 and 2.
+
+External Preact panes (the toggle, and the `urn:solid:view` loader) work because `index.html` ships a tiny importmap for `preact` / `preact/hooks` / `htm`. Hub's own modules are pure ESM and don't depend on it.
 
 ### Per-registration override via `urn:solid:view`
 

@@ -34,8 +34,8 @@ export async function render(container, ctx) {
         <h2>Panes</h2>
         <div class="set-row">
           <div>
-            <div class="lbl">Use pilot's Tracker pane</div>
-            <div class="desc">Loads <a href="https://solid-apps.github.io/pilot/tracker-pane.js" target="_blank" style="color:var(--accent)">pilot's tracker-pane.js</a> for Tasks (drag-drop kanban, Preact). Different look from the built-in pane. Reload the page after toggling.</div>
+            <div class="lbl">Use pilot's remote Tracker pane</div>
+            <div class="desc">Off → use hub's <code>src/panes/tracker.js</code> (vendored from pilot, evolves independently here).<br/>On → load <a href="https://solid-apps.github.io/pilot/tracker-pane.js" target="_blank" style="color:var(--accent)">pilot's remote tracker-pane.js</a> at runtime instead. Useful for comparing hub's diverging copy against the upstream. Reload after toggling.</div>
           </div>
           <div class="toggle ${localStorage.getItem("hubpod-use-pilot-tracker") === "1" ? "on" : ""}" id="pilot-toggle"><div class="knob"></div></div>
         </div>

@@ -87,15 +87,28 @@ async function loadExternal(url) {
   return pane;
 }
 
-function adapt(obj, url) {
+/**
+ * Adapt a pane module to hub-pod's pane interface.
+ *
+ * Hub-style modules (canHandle(input), render(input, container, ctx))
+ * pass through unchanged. LOSOS-style modules (canHandle(subject, store)
+ * and render(subject, store, container, rawData)) are detected by
+ * signature arity and wrapped so the registry sees a hub-shaped pane.
+ *
+ * Returns null if `obj` doesn't expose canHandle + render at all.
+ *
+ * Exported so apps can register statically-imported LOSOS modules
+ * (e.g. the vendored tracker pane) by adapting at register time.
+ */
+export function adapt(obj, idOrUrl) {
   if (!obj || typeof obj.canHandle !== "function" || typeof obj.render !== "function") return null;
-  // Heuristic: arity ≥ 2 on canHandle suggests LOSOS (subject, store).
   const losos = obj.render.length >= 4 || obj.canHandle.length >= 2;
+  const baseMeta = { id: idOrUrl, ...(obj.meta || {}) };
   if (!losos) {
-    return { meta: { id: url, ...(obj.meta || {}) }, canHandle: obj.canHandle, render: obj.render };
+    return { meta: baseMeta, canHandle: obj.canHandle, render: obj.render };
   }
   return {
-    meta: { id: url, name: "external (LOSOS): " + url, ...(obj.meta || {}) },
+    meta: { ...baseMeta, name: baseMeta.name || `LOSOS pane (${idOrUrl})` },
     canHandle(input) {
       const subject = { value: input?.url };
       const store = {
@@ -106,7 +119,6 @@ function adapt(obj, url) {
     },
     async render(input, container, _ctx) {
       const subject = { value: input?.url };
-      // LOSOS render(subject, store, container, rawData)
       return obj.render(subject, null, container, input?.doc || null);
     },
   };
