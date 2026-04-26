@@ -312,4 +312,4 @@ function appBlurb(id) {
   })[id] || "";
 }
 
-export const meta = { name: "Home", icon: ICON.home, hasSidebar: false };
+export const meta = { id: "home", name: "Home", icon: ICON.home, hasSidebar: false };

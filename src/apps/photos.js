@@ -261,4 +261,4 @@ async function promptCreateGallery(ctx) {
   }
 }
 
-export const meta = { name: "Photos", icon: ICON.photos, hasSidebar: true };
+export const meta = { id: "photos", name: "Photos", icon: ICON.photos, hasSidebar: true };

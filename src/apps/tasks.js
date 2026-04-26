@@ -224,4 +224,4 @@ async function promptCreate(ctx, kind = "tracker") {
   }
 }
 
-export const meta = { name: "Tasks", icon: ICON.tasks, hasSidebar: true };
+export const meta = { id: "tasks", name: "Tasks", icon: ICON.tasks, hasSidebar: true };

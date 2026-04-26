@@ -328,4 +328,4 @@ async function promptCreateNotebook(ctx) {
   }
 }
 
-export const meta = { name: "Notes", icon: ICON.notes, hasSidebar: true };
+export const meta = { id: "notes", name: "Notes", icon: ICON.notes, hasSidebar: true };

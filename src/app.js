@@ -17,6 +17,8 @@ import * as Photos from "./apps/photos.js";
 import * as Activity from "./apps/activity.js";
 import * as Settings from "./apps/settings.js";
 
+import { register as registerApp, list as listApps, find as findApp, loadAllExternal } from "./apps.js";
+
 // Register built-in panes. External panes can register themselves via
 // import('./panes.js').then(m => m.register(myPane)).
 import * as TrackerPane      from "./panes/tracker.js";          // hub's local copy (vendored from pilot, LOSOS-shape)
@@ -45,18 +47,10 @@ registerPane(adapt(PhotoPane,   "hub-pod/photo"));
 registerPane(adapt(PersonPane,  "hub-pod/person"));
 registerPane(adapt(FilePane,    "hub-pod/file"));
 
-const APPS = [
-  { id: "home",     mod: Home },
-  { id: "profile",  mod: Profile },
-  { id: "files",    mod: Files },
-  { id: "calendar", mod: Calendar },
-  { id: "contacts", mod: Contacts },
-  { id: "notes",    mod: Notes },
-  { id: "tasks",    mod: Tasks },
-  { id: "photos",   mod: Photos },
-  { id: "activity", mod: Activity },
-  { id: "settings", mod: Settings },
-];
+// Built-in apps. Order here = rail order. External apps load via
+// loadAllExternal() at boot and append to the registry.
+[Home, Profile, Files, Calendar, Contacts, Notes, Tasks, Photos, Activity, Settings]
+  .forEach(mod => registerApp(mod));
 
 const state = {
   app: "home",
@@ -72,10 +66,11 @@ const ctx = {
 
 function buildRail() {
   const rail = $("#rail");
-  rail.innerHTML = APPS.map((a, i) => `
-    <button class="rail-item ${a.id === state.app ? "active" : ""}" data-app="${a.id}" title="${escape(a.mod.meta.name)}">
-      ${a.mod.meta.icon}
-      <span class="rail-tip">${escape(a.mod.meta.name)}${i < 9 ? ` <span class="kbd">${i + 1}</span>` : ""}</span>
+  const apps = listApps();
+  rail.innerHTML = apps.map((a, i) => `
+    <button class="rail-item ${a.meta.id === state.app ? "active" : ""}" data-app="${a.meta.id}" title="${escape(a.meta.name)}">
+      ${a.meta.icon}
+      <span class="rail-tip">${escape(a.meta.name)}${i < 9 ? ` <span class="kbd">${i + 1}</span>` : ""}</span>
     </button>
   `).join("");
   $$(".rail-item[data-app]").forEach(el => el.addEventListener("click", () => switchApp(el.dataset.app)));
@@ -88,7 +83,7 @@ function setRailActive() {
 // ---- Switching ----------------------------------------------------------
 
 function switchApp(id) {
-  const a = APPS.find(x => x.id === id);
+  const a = findApp(id);
   if (!a) return;
   state.app = id;
   setRailActive();
@@ -97,10 +92,10 @@ function switchApp(id) {
   const sidebar = $("#sidebar");
   const main = $("#main");
 
-  if (a.mod.meta.hasSidebar && a.mod.sidebar) {
+  if (a.meta.hasSidebar && a.sidebar) {
     sidebar.style.display = "flex";
     main.classList.remove("main-no-sidebar");
-    sidebar.innerHTML = a.mod.sidebar(ctx);
+    sidebar.innerHTML = a.sidebar(ctx);
   } else {
     sidebar.style.display = "none";
     main.classList.add("main-no-sidebar");
@@ -108,12 +103,12 @@ function switchApp(id) {
 
   // Update topbar title
   $("#topbar-title").innerHTML = state.app === "home" ? "" :
-    `<span class="crumb">hub-pod</span> / ${escape(a.mod.meta.name)}`;
+    `<span class="crumb">hub-pod</span> / ${escape(a.meta.name)}`;
 
-  Promise.resolve(a.mod.render(main, ctx)).catch(e => {
+  Promise.resolve(a.render(main, ctx)).catch(e => {
     console.error("App render error:", e);
     main.innerHTML = `<div class="content"><div class="page-pad">
-      <h1>Couldn't render ${escape(a.mod.meta.name)}</h1>
+      <h1>Couldn't render ${escape(a.meta.name)}</h1>
       <p class="lede" style="color:var(--danger)">${escape(e.message)}</p>
     </div></div>`;
   });
@@ -195,11 +190,11 @@ function closeSpotlight() {
 }
 function spotSearch(q) {
   const ql = q.toLowerCase().trim();
-  const hits = APPS.filter(a => !ql || a.mod.meta.name.toLowerCase().includes(ql));
+  const hits = listApps().filter(a => !ql || a.meta.name.toLowerCase().includes(ql));
   $("#spot-results").innerHTML = hits.length
-    ? hits.map(a => `<div class="spot-r" data-app="${a.id}">
-        <div style="width:28px;height:28px;border-radius:7px;background:var(--bg-elev-2);display:grid;place-items:center;color:var(--text-dim)">${a.mod.meta.icon}</div>
-        <div style="flex:1"><div style="font-weight:500">${escape(a.mod.meta.name)}</div><div style="font-size:12px;color:var(--text-dim)">Open ${a.mod.meta.name.toLowerCase()}</div></div>
+    ? hits.map(a => `<div class="spot-r" data-app="${a.meta.id}">
+        <div style="width:28px;height:28px;border-radius:7px;background:var(--bg-elev-2);display:grid;place-items:center;color:var(--text-dim)">${a.meta.icon}</div>
+        <div style="flex:1"><div style="font-weight:500">${escape(a.meta.name)}</div><div style="font-size:12px;color:var(--text-dim)">Open ${a.meta.name.toLowerCase()}</div></div>
       </div>`).join("")
     : `<div style="padding:30px;text-align:center;color:var(--text-faint);font-size:13px">No results for "${escape(q)}"</div>`;
   $$("#spot-results .spot-r").forEach((el, i) => {
@@ -210,10 +205,14 @@ function spotSearch(q) {
 
 // ---- Init ---------------------------------------------------------------
 
-function init() {
+async function init() {
   // Theme
   const savedTheme = localStorage.getItem("hubpod-theme") || "light";
   setTheme(savedTheme);
+
+  // Load any user-installed external apps before building the rail.
+  // Failures are logged inside loadAllExternal — never blocks boot.
+  await loadAllExternal();
 
   $("#theme-btn").addEventListener("click", toggleTheme);
   $("#search-trigger").addEventListener("click", openSpotlight);
@@ -245,8 +244,8 @@ function init() {
     } else if (e.key.toLowerCase() === "t") {
       toggleTheme();
     } else if (e.key >= "1" && e.key <= "9") {
-      const a = APPS[+e.key - 1];
-      if (a) switchApp(a.id);
+      const a = listApps()[+e.key - 1];
+      if (a) switchApp(a.meta.id);
     }
   });
 
@@ -261,7 +260,7 @@ function init() {
 
   // Initial app from URL fragment, default home
   const hash = location.hash.replace("#", "");
-  switchApp(APPS.find(a => a.id === hash) ? hash : "home");
+  switchApp(findApp(hash) ? hash : "home");
 
   // First-visit hint
   setTimeout(() => {

@@ -117,4 +117,4 @@ function timeOf(iso) {
   return d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 }
 
-export const meta = { name: "Activity", icon: ICON.activity, hasSidebar: false };
+export const meta = { id: "activity", name: "Activity", icon: ICON.activity, hasSidebar: false };

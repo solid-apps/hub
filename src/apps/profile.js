@@ -49,4 +49,4 @@ export async function render(container, ctx) {
   await pane.render(input, page, ctx);
 }
 
-export const meta = { name: "Profile", icon: ICON.user, hasSidebar: true };
+export const meta = { id: "profile", name: "Profile", icon: ICON.user, hasSidebar: true };

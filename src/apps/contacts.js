@@ -103,4 +103,4 @@ function loginPrompt() {
   </div></div>`;
 }
 
-export const meta = { name: "Contacts", icon: ICON.contacts, hasSidebar: true };
+export const meta = { id: "contacts", name: "Contacts", icon: ICON.contacts, hasSidebar: true };

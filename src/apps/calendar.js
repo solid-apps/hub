@@ -323,4 +323,4 @@ async function promptCreateCalendar(ctx) {
   }
 }
 
-export const meta = { name: "Calendar", icon: ICON.calendar, hasSidebar: true };
+export const meta = { id: "calendar", name: "Calendar", icon: ICON.calendar, hasSidebar: true };

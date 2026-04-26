@@ -125,4 +125,4 @@ function loginPrompt() {
   </div></div>`;
 }
 
-export const meta = { name: "Files", icon: ICON.files, hasSidebar: true };
+export const meta = { id: "files", name: "Files", icon: ICON.files, hasSidebar: true };

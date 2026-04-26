@@ -6,18 +6,25 @@ import { discoverStorage, hubRoot, fetchTypeIndex, findRegistrations, TRACKER_CL
 import { logout } from "../auth.js";
 import { ICON, escape, $, $$, showToast } from "../ui.js";
 import { listRegistered, listExternal, loadAndRegister, getClassDefaults, setClassDefault } from "../panes.js";
+import {
+  list as listApps,
+  listExternal as listExternalApps,
+  loadAndRegister as loadAndRegisterApp,
+  getExternalUrls as getAppUrls,
+  removeExternal as removeExternalApp,
+} from "../apps.js";
 
-// Hosts considered "trusted" — no confirm prompt before loading a pane URL.
-// Anything else triggers a warning since panes get full DOM + xlogin access.
+// Hosts considered "trusted" — no confirm prompt before loading a pane/app URL.
+// Anything else triggers a warning since both get full DOM + xlogin access.
 const TRUSTED_HOSTS = new Set(["solid-apps.github.io", "localhost", "127.0.0.1"]);
-function confirmLoad(url) {
+function confirmLoad(url, kind = "pane") {
   let host;
   try { host = new URL(url).hostname; }
-  catch { return confirm(`Load this URL?\n\n${url}\n\nOnly proceed if you trust the source — panes get full DOM + xlogin access.`); }
+  catch { return confirm(`Load this URL?\n\n${url}\n\nOnly proceed if you trust the source — ${kind}s get full DOM + xlogin access.`); }
   if (TRUSTED_HOSTS.has(host)) return true;
   return confirm(
     `Load and run code from ${host}?\n\n` +
-    `Panes have full access to your DOM and to your pod (via xlogin.authFetch).\n` +
+    `${kind === "app" ? "Apps" : "Panes"} have full access to your DOM and to your pod (via xlogin.authFetch).\n` +
     `Only load URLs you trust.`
   );
 }
@@ -79,6 +86,24 @@ export async function render(container, ctx) {
           <div style="display:flex;gap:8px">
             <input id="pane-load-url" placeholder="https://example.org/my-pane.js" style="flex:1;background:var(--bg-elev);border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-family:var(--mono);font-size:13px;color:var(--text);outline:none" />
             <button class="btn primary" id="pane-load-btn">Load</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="set-section">
+        <h2>Apps</h2>
+        <div class="set-row" style="display:block">
+          <div class="lbl" style="margin-bottom:10px">Installed apps</div>
+          <div class="desc" style="margin-bottom:12px">Built-ins ship with hub. Externals are ES modules loaded by URL on boot — they appear on the rail alongside built-ins. Each must export <code>render(container, ctx)</code> and a <code>meta</code> object with at least <code>id</code>, <code>name</code>, <code>icon</code>.</div>
+          <div id="apps-registered-list" style="background:var(--bg-elev-2);padding:10px 14px;border-radius:8px;border:1px solid var(--line);font-family:var(--mono);font-size:12px;line-height:1.6"></div>
+        </div>
+
+        <div class="set-row" style="display:block">
+          <div class="lbl" style="margin-bottom:8px">Add an app by URL</div>
+          <div class="desc" style="margin-bottom:10px">URL is saved in localStorage and loaded on every boot. Reload after adding to see it on the rail.</div>
+          <div style="display:flex;gap:8px">
+            <input id="app-load-url" placeholder="https://example.org/my-app.js" style="flex:1;background:var(--bg-elev);border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-family:var(--mono);font-size:13px;color:var(--text);outline:none" />
+            <button class="btn primary" id="app-load-btn">Add</button>
           </div>
         </div>
       </div>
@@ -200,7 +225,7 @@ export async function render(container, ctx) {
   $("#pane-load-btn")?.addEventListener("click", async () => {
     const url = $("#pane-load-url")?.value.trim();
     if (!url) return;
-    if (!confirmLoad(url)) return;
+    if (!confirmLoad(url, "pane")) return;
     const btn = $("#pane-load-btn");
     btn.disabled = true; btn.textContent = "Loading…";
     try {
@@ -212,6 +237,27 @@ export async function render(container, ctx) {
       showToast("Load failed: " + e.message, "error");
     } finally {
       btn.disabled = false; btn.textContent = "Load";
+    }
+  });
+
+  // ---- Apps browser ----
+  drawAppsList();
+
+  $("#app-load-btn")?.addEventListener("click", async () => {
+    const url = $("#app-load-url")?.value.trim();
+    if (!url) return;
+    if (!confirmLoad(url, "app")) return;
+    const btn = $("#app-load-btn");
+    btn.disabled = true; btn.textContent = "Adding…";
+    try {
+      const app = await loadAndRegisterApp(url);
+      showToast(`Added ${app.meta?.name || app.meta?.id || url} — reload to see it on the rail`, "success");
+      $("#app-load-url").value = "";
+      drawAppsList();
+    } catch (e) {
+      showToast("Add failed: " + e.message, "error");
+    } finally {
+      btn.disabled = false; btn.textContent = "Add";
     }
   });
 
@@ -285,4 +331,36 @@ function drawPanesLists() {
   }
 }
 
-export const meta = { name: "Settings", icon: ICON.settings, hasSidebar: false };
+function drawAppsList() {
+  const reg = $("#apps-registered-list");
+  if (!reg) return;
+  const apps = listApps();
+  const externalUrls = new Set(getAppUrls());
+  if (!apps.length) {
+    reg.innerHTML = `<div style="color:var(--text-faint)">No apps registered.</div>`;
+    return;
+  }
+  reg.innerHTML = apps.map((a, i) => {
+    const url = a.meta?.__externalUrl;
+    const isExternal = !!url && externalUrls.has(url);
+    return `
+      <div style="padding:8px 0;${i > 0 ? "border-top:1px solid var(--line);" : ""};display:flex;align-items:center;gap:10px">
+        <div style="flex:1;min-width:0">
+          <div style="color:var(--text);font-weight:600">${escape(a.meta.name || a.meta.id || "(unnamed)")} ${isExternal ? `<span style="color:var(--text-faint);font-weight:400;font-size:11px">· external</span>` : `<span style="color:var(--text-faint);font-weight:400;font-size:11px">· built-in</span>`}</div>
+          <div style="color:var(--text-faint);word-break:break-all">id: ${escape(a.meta.id || "—")}</div>
+          ${url ? `<div style="color:var(--text-faint);word-break:break-all">${escape(url)}</div>` : ""}
+        </div>
+        ${isExternal ? `<button class="btn danger" data-app-remove="${escape(url)}" style="font-size:12px;padding:4px 10px">Remove</button>` : ""}
+      </div>
+    `;
+  }).join("");
+  $$("[data-app-remove]", reg).forEach(btn => btn.addEventListener("click", () => {
+    const url = btn.dataset.appRemove;
+    if (!confirm(`Remove this app?\n\n${url}\n\nIt'll disappear from the rail on next reload.`)) return;
+    removeExternalApp(url);
+    drawAppsList();
+    showToast("App removed — reload to update the rail", "info");
+  }));
+}
+
+export const meta = { id: "settings", name: "Settings", icon: ICON.settings, hasSidebar: false };
