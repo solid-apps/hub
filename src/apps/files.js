@@ -5,12 +5,14 @@
  * in a new tab (browser handles content-type).
  */
 
-import { listContainer, hubRoot, discoverStorage } from "../pod.js";
+import { hubRoot, discoverStorage } from "../pod.js";
 import { findFor } from "../panes.js";
-import { ICON, escape, fmtBytes, showToast, renderSpinner, renderEmpty, $, $$, requireSolid } from "../ui.js";
+import { ICON, escape, $, $$, requireSolid } from "../ui.js";
 
 let storage = null;
 let currentDir = null;
+let currentCtx = null;
+let listenerAttached = false;
 
 export function sidebar(ctx) {
   return `
@@ -40,6 +42,8 @@ export async function render(container, ctx) {
     return;
   }
   currentDir = hubRoot(storage);
+  currentCtx = ctx;
+  listenerAttached = false;
 
   container.innerHTML = `
     <div class="content" style="height:100%;display:flex;flex-direction:column">
@@ -47,7 +51,7 @@ export async function render(container, ctx) {
         <div class="breadcrumb" id="files-bc"></div>
         <div></div>
       </div>
-      <div class="files-grid" id="files-grid"><div class="spinner"></div></div>
+      <div id="files-grid" style="padding:18px 24px;flex:1;overflow:auto"><div class="spinner"></div></div>
     </div>
   `;
 
@@ -69,36 +73,33 @@ async function load() {
     currentDir = el.dataset.url;
     load();
   }));
-  renderSpinner(grid);
 
-  let items = [];
-  try { items = await listContainer(currentDir); }
-  catch (e) {
-    renderEmpty(grid, { title: "Couldn't list this container", body: e.message });
-    return;
-  }
-
-  if (!items.length) {
-    renderEmpty(grid, { title: "Empty container", body: currentDir });
-    return;
-  }
-
-  grid.innerHTML = "";
-  items.forEach(it => {
-    const slot = document.createElement("div");
-    grid.appendChild(slot);
-    const onOpen = (url, type) => {
+  // Wire pane:open once — child FileTilePanes inside the container view
+  // dispatch this CustomEvent on click; we catch the bubble and navigate.
+  if (!listenerAttached) {
+    grid.addEventListener("pane:open", (e) => {
+      const { url, type } = e?.detail || {};
+      if (!url) return;
       if (type === "container") { currentDir = url; load(); }
       else window.open(url, "_blank");
-    };
-    const ldpClass = it.type === "container"
-      ? "http://www.w3.org/ns/ldp#Container"
-      : "http://www.w3.org/ns/ldp#Resource";
-    const input = { url: it.url, doc: { type: it.type }, forClass: ldpClass, onOpen };
-    const pane = findFor(input);
-    if (pane) pane.render(input, slot);
-    else slot.outerHTML = `<div class="file-card other"><div class="fi">${ICON.doc}</div><div class="fn">${escape(it.url)}</div></div>`;
-  });
+    });
+    listenerAttached = true;
+  }
+
+  // Hand the current container subject to the registry. ContainerPane wins
+  // (no view:"tile" hint), fetches the listing, renders each member as a
+  // tile via CollectionPane → FileTilePane.
+  const input = {
+    url: currentDir,
+    doc: { type: "container" },
+    forClass: "http://www.w3.org/ns/ldp#Container",
+  };
+  const pane = findFor(input);
+  if (!pane) {
+    grid.innerHTML = `<div class="empty">No ContainerPane registered.</div>`;
+    return;
+  }
+  await pane.render(input, grid, currentCtx);
 }
 
 function breadcrumbHTML(url) {

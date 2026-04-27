@@ -19,9 +19,14 @@ export const meta = { id: "hub-pod/file", name: "File / folder card" };
 const LDP_CONTAINER = "http://www.w3.org/ns/ldp#Container";
 const LDP_RESOURCE  = "http://www.w3.org/ns/ldp#Resource";
 
-export function canHandle(subject, store) {
+export function canHandle(subject, store, rawData) {
   if (subject?.termType && subject.termType !== "NamedNode") return false;
   if (!subject?.value || !store?.statementsMatching) return false;
+  // Tile/grid context only — view:"tile" is set by parent panes
+  // (CollectionPane via ContainerPane) when they want a card per item.
+  // Without the hint, ContainerPane handles ldp:Container subjects in
+  // their full navigable form.
+  if (rawData?.view !== "tile") return false;
   const stmts = store.statementsMatching(subject, undefined, undefined);
   return stmts.some(s => {
     if (s.predicate?.value !== "http://www.w3.org/1999/02/22-rdf-syntax-ns#type") return false;
