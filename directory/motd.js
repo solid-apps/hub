@@ -343,8 +343,9 @@ function injectStyles() {
 .motd-overlay-headline { font: 700 56px/1.1 var(--sans); letter-spacing: -.02em; margin-bottom: 12px; }
 .motd-overlay-text { font: 22px/1.5 var(--sans); opacity: 0.9; max-width: 1000px; white-space: pre-line; }
 
-/* Browser fullscreen — imgwrap fills the screen, image lets-letterboxed
- * (object-fit: contain so we never crop), overlay shown, exit cursor. */
+/* Browser fullscreen — imgwrap fills the screen, image fills the screen
+ * full-bleed (object-fit: cover, may crop a sliver off the edges in
+ * exchange for no black bars), overlay shown, exit cursor. */
 .motd-imgwrap:fullscreen, .motd-imgwrap:-webkit-full-screen {
   background: black;
   cursor: zoom-out;
@@ -352,7 +353,7 @@ function injectStyles() {
 }
 .motd-imgwrap:fullscreen .motd-img,
 .motd-imgwrap:-webkit-full-screen .motd-img {
-  object-fit: contain;
+  object-fit: cover;
   width: 100%; height: 100%;
 }
 .motd-imgwrap:fullscreen .motd-overlay,
