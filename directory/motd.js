@@ -78,31 +78,89 @@ export async function render(container, ctx) {
     const isFresh = lastImageUrl !== null && lastImageUrl !== image;
     lastImageUrl = image;
 
-    container.innerHTML = `
-      <div class="content"><div class="motd-wrap ${isFresh ? "motd-fresh" : ""}">
-        <div class="motd-card">
-          ${image
-            ? `<div class="motd-imgwrap"><img class="motd-img" src="${escape(image)}" alt="${escape(headline || "today")}" /></div>`
-            : `<div class="motd-imgwrap motd-noimg">🌅</div>`}
-          <div class="motd-body">
-            <div class="motd-headline">${escape(headline || "Today")}</div>
-            ${text ? `<div class="motd-text">${escape(text)}</div>` : ""}
-            <div class="motd-foot">
-              ${author ? `<span class="motd-author">${escape(idOf(author) || author)}</span>` : ""}
-              ${date ? `<span class="motd-date">${escape(fmtDate(date))}</span>` : ""}
-              <span class="motd-live" title="Live — pushes to every open window">● live</span>
-              <button class="motd-edit" id="motd-edit" title="Edit today's MOTD">Edit</button>
+    // First-render: build the structure once. Subsequent draws update
+    // text/src in place so the DOM identity persists — required for
+    // browser fullscreen to survive a `pub` event re-render.
+    let card = container.querySelector(".motd-card");
+    if (!card) {
+      container.innerHTML = `
+        <div class="content"><div class="motd-wrap">
+          <div class="motd-card">
+            <div class="motd-imgwrap" data-role="imgwrap" title="Click for fullscreen">
+              <img class="motd-img" data-role="img" alt="" />
+              <span class="motd-fs-hint" title="Fullscreen">⛶</span>
+              <div class="motd-overlay" data-role="overlay">
+                <div class="motd-overlay-headline" data-role="overlay-headline"></div>
+                <div class="motd-overlay-text" data-role="overlay-text"></div>
+              </div>
+            </div>
+            <div class="motd-body">
+              <div class="motd-headline" data-role="headline"></div>
+              <div class="motd-text" data-role="text"></div>
+              <div class="motd-foot">
+                <span class="motd-author" data-role="author"></span>
+                <span class="motd-date" data-role="date"></span>
+                <span class="motd-live" title="Live — pushes to every open window">● live</span>
+                <button class="motd-edit" data-role="edit" title="Edit today's MOTD">Edit</button>
+              </div>
             </div>
           </div>
-        </div>
-        <div class="motd-source">${escape(url)}</div>
-      </div></div>
-    `;
+          <div class="motd-source" data-role="source"></div>
+        </div></div>
+      `;
+      card = container.querySelector(".motd-card");
 
-    container.querySelector("#motd-edit")?.addEventListener("click", () => {
-      renderEditor(container, url, doc, subj, ctx, draw);
-    });
+      // Click image → enter browser fullscreen on the imgwrap. Browser
+      // exits on Esc automatically. Live updates keep flowing because
+      // we update the same <img> element below; we don't replace it.
+      const imgwrap = card.querySelector('[data-role="imgwrap"]');
+      imgwrap.addEventListener("click", () => {
+        if (document.fullscreenElement) document.exitFullscreen();
+        else imgwrap.requestFullscreen?.().catch(() => {});
+      });
+
+      card.querySelector('[data-role="edit"]').addEventListener("click", () => {
+        renderEditor(container, url, doc, subj, ctx, draw);
+      });
+    }
+
+    // Patch in the new content. setText/setAttr only touch the leaves,
+    // so the imgwrap node stays the same → fullscreen mode persists.
+    const wrap = container.querySelector(".motd-wrap");
+    wrap.classList.toggle("motd-fresh", isFresh);
+
+    const imgEl = card.querySelector('[data-role="img"]');
+    const imgwrap = card.querySelector('[data-role="imgwrap"]');
+    if (image) {
+      imgEl.src = image;
+      imgEl.alt = headline || "today";
+      imgEl.style.display = "";
+      imgwrap.classList.remove("motd-noimg");
+    } else {
+      imgEl.removeAttribute("src");
+      imgEl.style.display = "none";
+      imgwrap.classList.add("motd-noimg");
+    }
+
+    setText(card, "[data-role=headline]", headline || "Today");
+    setText(card, "[data-role=text]", text || "");
+    card.querySelector('[data-role=text]').style.display = text ? "" : "none";
+    setText(card, "[data-role=author]", author ? (idOf(author) || author) : "");
+    card.querySelector('[data-role=author]').style.display = author ? "" : "none";
+    setText(card, "[data-role=date]", date ? fmtDate(date) : "");
+    card.querySelector('[data-role=date]').style.display = date ? "" : "none";
+
+    // Fullscreen overlay copy (visible only in fullscreen).
+    setText(card, "[data-role=overlay-headline]", headline || "Today");
+    setText(card, "[data-role=overlay-text]", text || "");
+
+    setText(container, ".motd-source [data-role=source], [data-role=source]", url);
   }
+}
+
+function setText(scope, selector, value) {
+  const el = scope.querySelector(selector);
+  if (el) el.textContent = value;
 }
 
 async function resolveMotdUrl(ctx) {
@@ -257,9 +315,50 @@ function injectStyles() {
   s.textContent = `
 .motd-wrap { padding: 28px 24px; max-width: 880px; margin: 0 auto; }
 .motd-card { background: var(--bg-elev); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; box-shadow: var(--shadow); display: flex; flex-direction: column; }
-.motd-imgwrap { width: 100%; aspect-ratio: 16/8; background: var(--bg-elev-2); display: grid; place-items: center; overflow: hidden; }
-.motd-img { width: 100%; height: 100%; object-fit: cover; transition: opacity .8s ease, transform .8s ease; }
-.motd-noimg { font-size: 60px; color: var(--text-faint); }
+.motd-imgwrap { position: relative; width: 100%; aspect-ratio: 16/8; background: var(--bg-elev-2); display: grid; place-items: center; overflow: hidden; cursor: zoom-in; }
+.motd-img { width: 100%; height: 100%; object-fit: cover; transition: opacity .8s ease, transform .8s ease; display: block; }
+.motd-noimg::before { content: "🌅"; font-size: 60px; color: var(--text-faint); }
+.motd-noimg { cursor: default; }
+
+/* Fullscreen affordance (small hint on hover) and overlay (visible in fullscreen). */
+.motd-fs-hint {
+  position: absolute; top: 12px; right: 12px;
+  width: 32px; height: 32px;
+  display: grid; place-items: center;
+  background: rgba(0,0,0,0.45); color: white;
+  border-radius: 50%; font-size: 14px;
+  opacity: 0; transition: opacity .15s;
+  pointer-events: none;
+}
+.motd-imgwrap:hover .motd-fs-hint { opacity: 1; }
+.motd-noimg .motd-fs-hint { display: none; }
+.motd-overlay {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  padding: 60px 80px 80px;
+  background: linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.7) 60%, transparent 100%);
+  color: white;
+  display: none;
+  pointer-events: none;
+}
+.motd-overlay-headline { font: 700 56px/1.1 var(--sans); letter-spacing: -.02em; margin-bottom: 12px; }
+.motd-overlay-text { font: 22px/1.5 var(--sans); opacity: 0.9; max-width: 1000px; white-space: pre-line; }
+
+/* Browser fullscreen — imgwrap fills the screen, image lets-letterboxed
+ * (object-fit: contain so we never crop), overlay shown, exit cursor. */
+.motd-imgwrap:fullscreen, .motd-imgwrap:-webkit-full-screen {
+  background: black;
+  cursor: zoom-out;
+  aspect-ratio: auto;
+}
+.motd-imgwrap:fullscreen .motd-img,
+.motd-imgwrap:-webkit-full-screen .motd-img {
+  object-fit: contain;
+  width: 100%; height: 100%;
+}
+.motd-imgwrap:fullscreen .motd-overlay,
+.motd-imgwrap:-webkit-full-screen .motd-overlay { display: block; }
+.motd-imgwrap:fullscreen .motd-fs-hint,
+.motd-imgwrap:-webkit-full-screen .motd-fs-hint { display: none; }
 .motd-body { padding: 22px 28px 26px; }
 .motd-headline { font: 700 28px/1.2 var(--sans); letter-spacing: -.02em; color: var(--text); }
 .motd-text { font: 16px/1.6 var(--sans); color: var(--text-dim); margin-top: 10px; white-space: pre-line; }
