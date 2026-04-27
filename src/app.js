@@ -21,6 +21,7 @@ import * as Settings from "./apps/settings.js";
 
 import { register as registerApp, list as listApps, find as findApp, loadAllExternal, syncFromPod as syncAppsFromPod } from "./apps.js";
 import { findFor as findPane, resolveFor as resolvePane, syncDefaultsFromPod, loadAllExternal as panesLoadAllExternal } from "./panes.js";
+import { subscribe } from "./notifications.js";
 
 // Register built-in panes. External panes can register themselves via
 // import('./panes.js').then(m => m.register(myPane)).
@@ -80,6 +81,10 @@ const ctx = {
   // pod.js uses internally. Panes that need their own GET/PUT calls
   // should prefer pod.js helpers, but this is the escape hatch.
   fetch: (...args) => (window.xlogin?.authFetch || fetch)(...args),
+  // Real-time change notifications. subscribe(url, cb) → unsubscribe.
+  // Best-effort: returns a no-op unsubscribe if the pod doesn't expose
+  // an Updates-Via header. Apps and panes can opt in for live updates.
+  subscribe,
 };
 
 // ---- Rail ----------------------------------------------------------------
