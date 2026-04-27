@@ -343,18 +343,20 @@ function injectStyles() {
 .motd-overlay-headline { font: 700 56px/1.1 var(--sans); letter-spacing: -.02em; margin-bottom: 12px; }
 .motd-overlay-text { font: 22px/1.5 var(--sans); opacity: 0.9; max-width: 1000px; white-space: pre-line; }
 
-/* Browser fullscreen — imgwrap fills the screen, image fits inside it
- * (object-fit: contain — never crop, letterbox if aspect ratios differ),
- * overlay shown over the bottom of the image. */
+/* Browser fullscreen — wrapper fills the entire viewport, image fills
+ * the wrapper without warping. The base rule's aspect-ratio: 16/8 is
+ * inert here because we override width/height + aspect-ratio explicitly. */
 .motd-imgwrap:fullscreen, .motd-imgwrap:-webkit-full-screen {
+  width: 100vw; height: 100vh;
+  aspect-ratio: auto;
   background: black;
   cursor: zoom-out;
-  aspect-ratio: auto;
+  display: block;
 }
 .motd-imgwrap:fullscreen .motd-img,
 .motd-imgwrap:-webkit-full-screen .motd-img {
-  object-fit: contain;
   width: 100%; height: 100%;
+  object-fit: contain;
 }
 .motd-imgwrap:fullscreen .motd-overlay,
 .motd-imgwrap:-webkit-full-screen .motd-overlay { display: block; }
