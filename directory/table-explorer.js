@@ -99,7 +99,13 @@ export async function render(subject, _store, container, _rawData, ctx) {
 
 async function loadListing(url, ctx) {
   const fetcher = ctx?.fetch || window.fetch.bind(window);
-  const r = await fetcher(url, { headers: { Accept: "application/ld+json" } });
+  // cache: "reload" — force a fresh fetch every time. Without this, browsers
+  // can serve the cached body from before a server upgrade (when JSS used to
+  // emit Turtle on this path), and the stale body keeps coming back via 304s.
+  const r = await fetcher(url, {
+    cache: "reload",
+    headers: { Accept: "application/ld+json" },
+  });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const body = (await r.text()).trim();
   if (!body.startsWith("{") && !body.startsWith("[")) {
