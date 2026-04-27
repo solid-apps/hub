@@ -81,7 +81,11 @@ export async function render(container, ctx) {
     // First-render: build the structure once. Subsequent draws update
     // text/src in place so the DOM identity persists — required for
     // browser fullscreen to survive a `pub` event re-render.
-    let card = container.querySelector(".motd-card");
+    //
+    // We key the "already built" check on the [data-role=img] node
+    // rather than .motd-card, because the seed and edit views also
+    // produce a .motd-card but without the data-role scaffolding.
+    let card = container.querySelector('[data-role="img"]')?.closest(".motd-card");
     if (!card) {
       container.innerHTML = `
         <div class="content"><div class="motd-wrap">
