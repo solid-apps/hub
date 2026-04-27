@@ -7,12 +7,14 @@
 
 import { hubRoot, discoverStorage } from "../pod.js";
 import { findFor } from "../panes.js";
+import { subscribe } from "../notifications.js";
 import { ICON, escape, $, $$, requireSolid } from "../ui.js";
 
 let storage = null;
 let currentDir = null;
 let currentCtx = null;
 let listenerAttached = false;
+let unsubscribeCurrent = null;
 
 export function sidebar(ctx) {
   return `
@@ -100,6 +102,14 @@ async function load() {
     return;
   }
   await pane.render(input, grid, currentCtx);
+
+  // Subscribe to server-pushed change notifications for the container.
+  // When any client writes to it, JSS / NSS / CSS push us a `pub` event
+  // and we re-render. No-op on servers without notification support.
+  if (unsubscribeCurrent) { unsubscribeCurrent(); unsubscribeCurrent = null; }
+  try {
+    unsubscribeCurrent = await subscribe(currentDir, () => load());
+  } catch { /* best-effort */ }
 }
 
 function breadcrumbHTML(url) {
