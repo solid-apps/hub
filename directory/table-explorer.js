@@ -99,15 +99,12 @@ export async function render(subject, _store, container, _rawData, ctx) {
 
 async function loadListing(url, ctx) {
   const fetcher = ctx?.fetch || window.fetch.bind(window);
-  const r = await fetcher(url, {
-    headers: { Accept: "application/ld+json, text/turtle;q=0.5" },
-  });
+  const r = await fetcher(url, { headers: { Accept: "application/ld+json" } });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  const ct = r.headers.get("content-type") || "";
-  const body = await r.text();
-
-  if (ct.includes("turtle")) return parseTurtleListing(body, url);
-  // JSON-LD path
+  const body = (await r.text()).trim();
+  if (!body.startsWith("{") && !body.startsWith("[")) {
+    throw new Error("server returned non-JSON-LD body (got: " + body.slice(0, 24) + "…)");
+  }
   let doc;
   try { doc = JSON.parse(body); }
   catch (e) { throw new Error("response wasn't valid JSON-LD: " + e.message); }
@@ -158,38 +155,6 @@ function normaliseMember(c, nodes, baseUrl) {
 
   const isContainer = types.some(t => /(?:#|\/)(?:BasicContainer|Container)$/.test(t)) || url.endsWith("/");
   return { url, type: isContainer ? "container" : "resource", size, modified };
-}
-
-function parseTurtleListing(body, baseUrl) {
-  // Minimal Turtle line-walker — looks for ldp:contains entries and
-  // per-resource stat:size + dc:modified properties. Not a full Turtle
-  // parser — relies on the typical "one-statement-per-line" formatting
-  // that pod servers emit. JSON-LD path is preferred.
-  const lines = body.replace(/\r/g, "").split("\n");
-  const containerUrls = new Set();
-  for (const line of lines) {
-    if (/ldp:contains/.test(line) || /<http:\/\/www\.w3\.org\/ns\/ldp#contains>/.test(line)) {
-      const urls = (line.match(/<([^>]+)>/g) || []).map(s => s.slice(1, -1));
-      for (const u of urls) if (u !== baseUrl) containerUrls.add(resolveUrl(u, baseUrl));
-    }
-  }
-  const items = [];
-  for (const u of containerUrls) {
-    let size, modified, type = "resource";
-    const re = new RegExp(`<${u.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}>([^.]*)\\.`, "g");
-    let m;
-    while ((m = re.exec(body))) {
-      const block = m[1];
-      const sm = block.match(/posix\/stat#size>?\s+(\d+)/);
-      if (sm) size = parseInt(sm[1], 10);
-      const dm = block.match(/dc(?:terms)?:modified\s+"([^"]+)"/);
-      if (dm) modified = dm[1];
-      if (/BasicContainer|ldp:Container/.test(block)) type = "container";
-    }
-    if (u.endsWith("/")) type = "container";
-    items.push({ url: u, type, size, modified });
-  }
-  return items;
 }
 
 function row(it) {
