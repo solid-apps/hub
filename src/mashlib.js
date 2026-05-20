@@ -177,31 +177,84 @@ function buildResourceApp() {
   };
 }
 
+// URL-driven breadcrumb in the topbar — each segment is a clickable
+// link to its container, giving users a familiar Finder/Files navigation
+// surface that lets them jump up the tree at any level. In mashlib mode
+// this replaces hub's "hub-pod / <AppName>" title.
+function renderPathCrumbs() {
+  const el = document.getElementById("topbar-title");
+  if (!el) return;
+  const u = new URL(location.href);
+  const segments = u.pathname.split("/").filter(Boolean);
+  const isResource = !u.pathname.endsWith("/");
+  let acc = u.origin + "/";
+  let html = `<a class="crumb" href="${acc}" title="${escapeHtml(u.host)}">${escapeHtml(u.host)}</a>`;
+  segments.forEach((seg, i) => {
+    const isLast = i === segments.length - 1;
+    acc += seg + (isLast && isResource ? "" : "/");
+    if (isLast && isResource) {
+      html += ` <span class="sep">/</span> <span class="crumb cur">${escapeHtml(decodeURIComponent(seg))}</span>`;
+    } else {
+      html += ` <span class="sep">/</span> <a class="crumb" href="${acc}">${escapeHtml(decodeURIComponent(seg))}</a>`;
+    }
+  });
+  el.innerHTML = html;
+}
+
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
+}
+
+// Patch history pushState/replaceState so anything in the app that changes
+// the URL (Files navigation, Resource navigation, etc.) also refreshes the
+// breadcrumb. Cheap and centralised.
+function installCrumbUpdater() {
+  const origPush = history.pushState.bind(history);
+  const origReplace = history.replaceState.bind(history);
+  history.pushState = function (...args) {
+    const r = origPush(...args);
+    renderPathCrumbs();
+    return r;
+  };
+  history.replaceState = function (...args) {
+    const r = origReplace(...args);
+    renderPathCrumbs();
+    return r;
+  };
+  window.addEventListener("popstate", renderPathCrumbs);
+}
+
 async function boot() {
   injectImportmap();
   injectStyle(shellCss);
+  // Mark mashlib mode up-front. Distinct from window.__hubMashlib (which
+  // is the data-island context, may be null for 401 / 404 wrappers).
+  window.__hubMashlibActive = true;
   // Capture the data island URL + body BEFORE buildShell wipes the DOM.
   window.__hubMashlib = captureMashlibContext();
   buildShell();
+  installCrumbUpdater();
   // Register the resource app BEFORE app.js boots — app.js's hash router
   // looks up registered apps at module-init time, so we must be in the
   // registry first.
   const apps = await import("./apps.js");
   apps.register(buildResourceApp());
   const initialApp = pickInitialAppFromUrl();
-  if (initialApp) {
-    history.replaceState(null, "", "#" + initialApp);
-  }
   await loadXlogin();
   await import("./app.js");
-  // app.js's onAuth listener fires immediately with the (initial) auth state
-  // and calls switchApp(state.app) — state.app is hardcoded to "home", which
-  // clobbers any #resource hash we set above. Re-assert by clicking the rail
-  // item; hub's click handler runs switchApp() properly.
+  // app.js's onAuth listener fires immediately and calls
+  // switchApp(state.app="home"). Re-assert the URL-derived app via a rail
+  // click — hub's click handler runs switchApp properly, and (since we
+  // patched switchApp to skip hash mutation in mashlib mode) the URL stays
+  // as the real Solid resource URI without any #app suffix.
   if (initialApp && initialApp !== "home") {
     requestAnimationFrame(() => {
       document.querySelector(`.rail-item[data-app="${initialApp}"]`)?.click();
+      // Run after switchApp so we overwrite hub's "hub-pod / Files" title
+      renderPathCrumbs();
     });
+  } else {
+    requestAnimationFrame(renderPathCrumbs);
   }
 }
 

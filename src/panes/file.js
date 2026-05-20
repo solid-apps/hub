@@ -52,9 +52,13 @@ export async function render(subject, _store, container, rawData) {
   `;
   container.addEventListener("click", () => {
     if (isDir) {
-      container.dispatchEvent(new CustomEvent("pane:open", { detail: { url, type } }));
+      // bubbles:true so Files's grid-level pane:open handler can catch and navigate.
+      container.dispatchEvent(new CustomEvent("pane:open", { detail: { url, type }, bubbles: true }));
     } else {
-      window.open(url, "_blank");
+      // Same-tab nav so JSS's mashlib wrapper takes over for the new URL —
+      // hub-mashlib re-bootstraps and the Resource app dispatches to the
+      // type-matching pane.
+      window.location.href = url;
     }
   });
 }

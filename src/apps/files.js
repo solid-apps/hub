@@ -23,13 +23,14 @@ export function sidebar(ctx) {
       <div class="sb-section">
         <div class="sb-label">Locations</div>
         <button class="sb-item" data-go="storage">${ICON.files} <span>Pod root</span></button>
-        <button class="sb-item active" data-go="hub">${ICON.files} <span>hub-pod data</span></button>
+        <button class="sb-item" data-go="public">${ICON.files} <span>Public</span></button>
+        <button class="sb-item" data-go="hub">${ICON.files} <span>hub-pod data</span></button>
       </div>
       <div class="sb-section">
         <div class="sb-label">Tip</div>
         <div style="padding:6px 18px;font-size:12px;color:var(--text-dim);line-height:1.5">
           Files are real LDP resources on your pod. Click a folder to browse;
-          click a file to fetch it in a new tab.
+          click a file to render via its @type pane.
         </div>
       </div>
     </div>
@@ -43,14 +44,21 @@ export async function render(container, ctx) {
     container.innerHTML = `<div class="content"><div class="page-pad"><h1>Files</h1><p class="lede">Couldn't find your pod root.</p></div></div>`;
     return;
   }
-  // When loaded as a JSS mashlib on a container URL, mashlib.js stashes
-  // the URL in window.__hubMashlib. Honour it on first render so Files
-  // lands where the user actually navigated.
+  // When loaded as a JSS mashlib, mashlib.js stashes the URL in
+  // window.__hubMashlib. Honour it on first render so Files lands where
+  // the user actually navigated:
+  //   - container URL  → list it directly
+  //   - resource URL   → list its parent container (so the breadcrumb
+  //                      reflects the path the user is on)
+  //   - none           → default to /public/ (the public Solid container)
   const mashlibUri = window.__hubMashlib?.uri;
+  const publicDir = storage.replace(/\/?$/, "/") + "public/";
   if (mashlibUri && mashlibUri.endsWith("/")) {
     currentDir = mashlibUri;
+  } else if (mashlibUri) {
+    currentDir = mashlibUri.replace(/[^/]+$/, "") || publicDir;
   } else {
-    currentDir = hubRoot(storage);
+    currentDir = publicDir;
   }
   currentCtx = ctx;
   listenerAttached = false;
@@ -66,18 +74,43 @@ export async function render(container, ctx) {
   `;
 
   $$("[data-go]", $("aside.sidebar")).forEach(el => el.addEventListener("click", () => {
-    if (el.dataset.go === "storage") currentDir = storage;
-    else currentDir = hubRoot(storage);
+    const go = el.dataset.go;
+    if (go === "storage") currentDir = storage;
+    else if (go === "public") currentDir = storage.replace(/\/?$/, "/") + "public/";
+    else if (go === "hub") currentDir = hubRoot(storage);
+    refreshSidebarActive();
     load();
   }));
+  refreshSidebarActive();
 
   load();
+}
+
+// Mark the sidebar location whose path equals currentDir as active.
+function refreshSidebarActive() {
+  const sidebar = $("aside.sidebar");
+  if (!sidebar || !storage) return;
+  const here = currentDir;
+  const map = {
+    storage: storage,
+    public: storage.replace(/\/?$/, "/") + "public/",
+    hub: hubRoot(storage),
+  };
+  sidebar.querySelectorAll("[data-go]").forEach(el => {
+    el.classList.toggle("active", here === map[el.dataset.go]);
+  });
 }
 
 async function load() {
   const grid = $("#files-grid");
   const bc = $("#files-bc");
   if (!grid || !bc) return;
+  refreshSidebarActive();
+  // In mashlib mode, keep the browser URL in sync with currentDir so the
+  // address bar reflects a real Solid URI (shareable, bookmarkable).
+  if (window.__hubMashlibActive && currentDir && currentDir !== location.href) {
+    try { history.pushState(null, "", currentDir); } catch {}
+  }
   bc.innerHTML = breadcrumbHTML(currentDir);
   $$(".crumb", bc).forEach(el => el.addEventListener("click", () => {
     currentDir = el.dataset.url;
@@ -91,7 +124,11 @@ async function load() {
       const { url, type } = e?.detail || {};
       if (!url) return;
       if (type === "container") { currentDir = url; load(); }
-      else window.open(url, "_blank");
+      // Non-container: navigate within the same tab so JSS's mashlib wrapper
+      // takes over for the new URL — hub-mashlib re-bootstraps and the
+      // Resource app dispatches to the type-matching pane. Beats opening
+      // the raw resource in a new tab.
+      else window.location.href = url;
     });
     listenerAttached = true;
   }

@@ -112,7 +112,9 @@ function switchApp(id) {
   if (!a) return;
   state.app = id;
   setRailActive();
-  history.replaceState(null, "", "#" + id);
+  // In mashlib mode the URL is a real Solid resource — its fragment
+  // identifies an RDF subject, not app state. Don't pollute it.
+  if (!window.__hubMashlibActive) history.replaceState(null, "", "#" + id);
 
   const sidebar = $("#sidebar");
   const main = $("#main");
@@ -126,9 +128,12 @@ function switchApp(id) {
     main.classList.add("main-no-sidebar");
   }
 
-  // Update topbar title
-  $("#topbar-title").innerHTML = state.app === "home" ? "" :
-    `<span class="crumb">hub-pod</span> / ${escape(a.meta.name)}`;
+  // Update topbar title — but in mashlib mode the topbar shows a
+  // URL-derived breadcrumb instead, owned by mashlib.js. Don't clobber it.
+  if (!window.__hubMashlibActive) {
+    $("#topbar-title").innerHTML = state.app === "home" ? "" :
+      `<span class="crumb">hub-pod</span> / ${escape(a.meta.name)}`;
+  }
 
   Promise.resolve(a.render(main, ctx)).catch(e => {
     console.error("App render error:", e);
