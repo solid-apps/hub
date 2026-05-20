@@ -61,7 +61,13 @@ registerPane(adapt(CollectionPane, "hub-pod/collection"));
 
 // Built-in apps. Order here = rail order. External apps load via
 // loadAllExternal() at boot and append to the registry.
-[Home, Profile, Files, Calendar, Contacts, Notes, Tasks, Photos, Bookmarks, Activity, Store, Settings]
+//
+// Order rationale:
+//   Top group (essentials): Home, Files, Tasks — the daily-driver surface.
+//   Middle: Calendar, Contacts, Notes, Photos, Bookmarks — content apps.
+//   Trailing: Activity, Store — meta / discovery.
+//   Bottom: Profile, Settings — identity + config (placed last together).
+[Home, Files, Tasks, Calendar, Contacts, Notes, Photos, Bookmarks, Activity, Store, Profile, Settings]
   .forEach(mod => registerApp(mod));
 
 const state = {
