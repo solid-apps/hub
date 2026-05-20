@@ -1,11 +1,11 @@
 /**
  * Home — dashboard pulling recent items from across apps.
  *
- * No persistent state of its own. Reads:
+ * No persistent state of its own. Reads via TypeIndex registrations:
  *   - WebID profile (for greeting)
- *   - Recent notes from /hub/notes/
- *   - Open tasks from /hub/tasks/list.jsonld
- *   - Upcoming events from /hub/calendar/
+ *   - Recent notes (default: /public/note/)
+ *   - Open tasks (default: /public/tracker/)
+ *   - Upcoming events (default: /public/event/)
  */
 
 import { fetchWebIdProfile, listContainer, getJsonLd, hubRoot, discoverStorage, fetchTypeIndex, findRegistrations, TRACKER_CLASS, NOTE_CLASSES, CALENDAR_CLASSES, IMAGE_CLASSES } from "../pod.js";

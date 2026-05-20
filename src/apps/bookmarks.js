@@ -64,7 +64,7 @@ async function load(ctx) {
   if (!regs.length) {
     body.innerHTML = `<div class="card" style="color:var(--text-dim);text-align:center;padding:32px 24px;max-width:640px;margin:0 auto">
       <div style="font-size:15px;color:var(--text);margin-bottom:6px">No bookmark collection yet.</div>
-      <div style="font-size:13px;margin-bottom:18px">Hub will create <code>/hub/bookmarks/</code> on your pod and register it as a <code>bookmark:Bookmark</code> instance container in your TypeIndex.</div>
+      <div style="font-size:13px;margin-bottom:18px">Hub will create <code>/public/bookmark/</code> on your pod and register it as a <code>bookmark:Bookmark</code> instance container in your TypeIndex.</div>
       <button class="btn primary" id="bm-empty-new">${ICON.plus} Create your first bookmark</button>
     </div>`;
     $("#bm-empty-new").addEventListener("click", () => promptCreate(ctx));

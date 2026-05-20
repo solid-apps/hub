@@ -9,7 +9,7 @@
  *   - solid:instance → fetch the JSON-LD doc and render whatever images it
  *     describes (foaf:depiction / schema:image / schema:contentUrl).
  *
- * No hardcoded /hub/photos/ — Photos shows what your pod says it has.
+ * No hardcoded /public/photo/ — Photos shows what your pod says it has.
  */
 
 import {
@@ -66,7 +66,7 @@ export async function render(container, ctx) {
   if (!regs.length) {
     $("#photos-body").innerHTML = `<div class="page-pad"><div class="card" style="color:var(--text-dim);text-align:center;padding:32px 24px;max-width:640px;margin:0 auto">
       <div style="font-size:15px;color:var(--text);margin-bottom:6px">No image collections yet.</div>
-      <div style="font-size:13px;margin-bottom:18px">Hub will create a container under <code>/hub/photos/</code> on your pod and register it as a <code>schema:ImageGallery</code> instance container in your TypeIndex. Drop images into the folder afterwards (any pod-aware file tool).</div>
+      <div style="font-size:13px;margin-bottom:18px">Hub will create a container under <code>/public/photo/</code> on your pod and register it as a <code>schema:ImageGallery</code> instance container in your TypeIndex. Drop images into the folder afterwards (any pod-aware file tool).</div>
       <button class="btn primary" id="empty-new-gallery-btn">${ICON.plus} Create your first gallery</button>
       <div style="margin-top:18px;font-size:12px;color:var(--text-faint)">Or add a TypeRegistration manually with one of: ${IMAGE_CLASSES.map(c => `<code>${escape(c)}</code>`).join(", ")}</div>
     </div></div>`;

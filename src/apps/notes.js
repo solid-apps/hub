@@ -294,7 +294,7 @@ function renderNoRegistrations() {
   $("#note-reader").innerHTML = `
     <div class="card" style="color:var(--text-dim);max-width:640px;text-align:center;padding:32px 24px">
       <div style="font-size:15px;color:var(--text);margin-bottom:6px">No notebooks yet.</div>
-      <div style="font-size:13px;margin-bottom:18px">Hub will create a container under <code>/hub/notes/</code> on your pod and register it as a <code>schema:TextDocument</code> instance container in your TypeIndex.</div>
+      <div style="font-size:13px;margin-bottom:18px">Hub will create a container under <code>/public/note/</code> on your pod and register it as a <code>schema:TextDocument</code> instance container in your TypeIndex.</div>
       <button class="btn primary" id="empty-new-notebook-btn">${ICON.plus} Create your first notebook</button>
       <div style="margin-top:18px;font-size:12px;color:var(--text-faint)">Or add a TypeRegistration manually with one of: ${NOTE_CLASSES.map(c => `<code>${escape(c)}</code>`).join(", ")}</div>
     </div>

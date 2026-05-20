@@ -509,9 +509,9 @@ export async function createNotebook({ webid, name }) {
   const storage = await discoverStorage(webid);
   if (!storage) throw new Error("Couldn't find your pod root");
   const ti = await fetchTypeIndex(webid);
-  const containerUrl = `${storage}hub/notes/${slug}/`;
-  await ensureContainer(`${storage}hub/`).catch(() => {});
-  await ensureContainer(`${storage}hub/notes/`).catch(() => {});
+  const containerUrl = `${storage}public/note/${slug}/`;
+  await ensureContainer(`${storage}public/`).catch(() => {});
+  await ensureContainer(`${storage}public/note/`).catch(() => {});
   await ensureContainer(containerUrl);
   await addTypeRegistration(ti.typeIndexUrl, { forClass: NOTE_CLASSES[0], instanceContainer: containerUrl });
   return { url: containerUrl };
@@ -523,9 +523,9 @@ export async function createCalendar({ webid, name }) {
   const storage = await discoverStorage(webid);
   if (!storage) throw new Error("Couldn't find your pod root");
   const ti = await fetchTypeIndex(webid);
-  const containerUrl = `${storage}hub/calendar/${slug}/`;
-  await ensureContainer(`${storage}hub/`).catch(() => {});
-  await ensureContainer(`${storage}hub/calendar/`).catch(() => {});
+  const containerUrl = `${storage}public/event/${slug}/`;
+  await ensureContainer(`${storage}public/`).catch(() => {});
+  await ensureContainer(`${storage}public/event/`).catch(() => {});
   await ensureContainer(containerUrl);
   await addTypeRegistration(ti.typeIndexUrl, { forClass: CALENDAR_CLASSES[0], instanceContainer: containerUrl });
   return { url: containerUrl };
@@ -537,23 +537,23 @@ export async function createGallery({ webid, name }) {
   const storage = await discoverStorage(webid);
   if (!storage) throw new Error("Couldn't find your pod root");
   const ti = await fetchTypeIndex(webid);
-  const containerUrl = `${storage}hub/photos/${slug}/`;
-  await ensureContainer(`${storage}hub/`).catch(() => {});
-  await ensureContainer(`${storage}hub/photos/`).catch(() => {});
+  const containerUrl = `${storage}public/photo/${slug}/`;
+  await ensureContainer(`${storage}public/`).catch(() => {});
+  await ensureContainer(`${storage}public/photo/`).catch(() => {});
   await ensureContainer(containerUrl);
   await addTypeRegistration(ti.typeIndexUrl, { forClass: IMAGE_CLASSES[0], instanceContainer: containerUrl });
   return { url: containerUrl };
 }
 
 /**
- * Ensure /hub/bookmarks/ exists and is registered in the TypeIndex with
+ * Ensure /public/bookmark/ exists and is registered in the TypeIndex with
  * forClass: bookmark:Bookmark. Idempotent. Returns the container URL.
  */
 export async function ensureBookmarksContainer(webid) {
   const storage = await discoverStorage(webid);
   if (!storage) throw new Error("Couldn't find your pod root");
-  const containerUrl = `${storage}hub/bookmarks/`;
-  await ensureContainer(`${storage}hub/`).catch(() => {});
+  const containerUrl = `${storage}public/bookmark/`;
+  await ensureContainer(`${storage}public/`).catch(() => {});
   await ensureContainer(containerUrl);
   const ti = await fetchTypeIndex(webid);
   const has = ti.registrations.some(r => r.forClass === BOOKMARK_CLASSES[0] && r.instanceContainer);

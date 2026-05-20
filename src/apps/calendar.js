@@ -69,7 +69,7 @@ export async function render(container, ctx) {
     $("#cal-message").innerHTML = `
       <div class="card" style="color:var(--text-dim);margin:18px 0;text-align:center;padding:32px 24px">
         <div style="font-size:15px;color:var(--text);margin-bottom:6px">No calendar yet.</div>
-        <div style="font-size:13px;margin-bottom:18px">Hub will create a container under <code>/hub/calendar/</code> on your pod and register it as an <code>ical:Vcalendar</code> instance container in your TypeIndex.</div>
+        <div style="font-size:13px;margin-bottom:18px">Hub will create a container under <code>/public/event/</code> on your pod and register it as an <code>ical:Vcalendar</code> instance container in your TypeIndex.</div>
         <button class="btn primary" id="empty-new-cal-btn">${ICON.plus} Create your first calendar</button>
         <div style="margin-top:18px;font-size:12px;color:var(--text-faint)">Or add a TypeRegistration manually with one of: ${CALENDAR_CLASSES.map(c => `<code>${escape(c)}</code>`).join(", ")}</div>
       </div>
