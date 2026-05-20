@@ -23,13 +23,14 @@ export function sidebar(ctx) {
       <div class="sb-section">
         <div class="sb-label">Locations</div>
         <button class="sb-item" data-go="storage">${ICON.files} <span>Pod root</span></button>
-        <button class="sb-item active" data-go="hub">${ICON.files} <span>hub-pod data</span></button>
+        <button class="sb-item active" data-go="public">${ICON.files} <span>Public</span></button>
+        <button class="sb-item" data-go="hub">${ICON.files} <span>hub-pod data</span></button>
       </div>
       <div class="sb-section">
         <div class="sb-label">Tip</div>
         <div style="padding:6px 18px;font-size:12px;color:var(--text-dim);line-height:1.5">
           Files are real LDP resources on your pod. Click a folder to browse;
-          click a file to fetch it in a new tab.
+          click a file to open it.
         </div>
       </div>
     </div>
@@ -43,7 +44,10 @@ export async function render(container, ctx) {
     container.innerHTML = `<div class="content"><div class="page-pad"><h1>Files</h1><p class="lede">Couldn't find your pod root.</p></div></div>`;
     return;
   }
-  currentDir = hubRoot(storage);
+  // Default to /public/ — that's where most user-visible artefacts live
+  // (notes, photos, posts, trackers). hub-pod data is private app state;
+  // pod root is mostly chrome.
+  currentDir = publicDir(storage);
   currentCtx = ctx;
   listenerAttached = false;
 
@@ -58,18 +62,42 @@ export async function render(container, ctx) {
   `;
 
   $$("[data-go]", $("aside.sidebar")).forEach(el => el.addEventListener("click", () => {
-    if (el.dataset.go === "storage") currentDir = storage;
-    else currentDir = hubRoot(storage);
+    const go = el.dataset.go;
+    if (go === "storage") currentDir = storage;
+    else if (go === "public") currentDir = publicDir(storage);
+    else if (go === "hub") currentDir = hubRoot(storage);
+    refreshSidebarActive();
     load();
   }));
+  refreshSidebarActive();
 
   load();
+}
+
+function publicDir(s) {
+  if (!s) return null;
+  return s.replace(/\/?$/, "/") + "public/";
+}
+
+// Mark the sidebar location whose path equals currentDir as active.
+function refreshSidebarActive() {
+  const sidebar = $("aside.sidebar");
+  if (!sidebar || !storage) return;
+  const map = {
+    storage: storage,
+    public: publicDir(storage),
+    hub: hubRoot(storage),
+  };
+  sidebar.querySelectorAll("[data-go]").forEach(el => {
+    el.classList.toggle("active", currentDir === map[el.dataset.go]);
+  });
 }
 
 async function load() {
   const grid = $("#files-grid");
   const bc = $("#files-bc");
   if (!grid || !bc) return;
+  refreshSidebarActive();
   bc.innerHTML = breadcrumbHTML(currentDir);
   $$(".crumb", bc).forEach(el => el.addEventListener("click", () => {
     currentDir = el.dataset.url;
