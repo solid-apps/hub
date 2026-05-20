@@ -5,6 +5,16 @@
 import { onAuth, getAuth, login, logout } from "./auth.js";
 import { ICON, escape, $, $$, initials, showToast, avatarHTML } from "./ui.js";
 import { fetchWebIdProfile } from "./pod.js";
+import { readResourceHint, pickAppForHint, buildResourceApp, installCrumbUpdater, renderPathCrumbs } from "./nav.js";
+
+// Universal entry: same source serves the standalone hub and the bundled
+// mashlib. Mashlib's bootstrap (src/mashlib.js) sets window.__hubMashlibActive
+// + window.__hubMashlib before importing this module. Standalone mode picks
+// the hint up from ?uri= via readResourceHint().
+if (!window.__hubMashlibActive) {
+  const hint = readResourceHint();
+  if (hint) window.__hubMashlib = hint;
+}
 
 import * as Home from "./apps/home.js";
 import * as Profile from "./apps/profile.js";
@@ -70,6 +80,13 @@ registerPane(adapt(CollectionPane, "hub-pod/collection"));
 [Home, Files, Tasks, Calendar, Contacts, Notes, Photos, Bookmarks, Activity, Store, Profile, Settings]
   .forEach(mod => registerApp(mod));
 
+// Register the synthetic Resource app whenever we have a resource hint
+// (either mashlib's data island or standalone's ?uri=). Goes at the end
+// of the rail so it doesn't reorder the daily-driver layout.
+if (window.__hubMashlib) {
+  registerApp(buildResourceApp());
+}
+
 const state = {
   app: "home",
   profile: null,
@@ -118,7 +135,9 @@ function switchApp(id) {
   if (!a) return;
   state.app = id;
   setRailActive();
-  history.replaceState(null, "", "#" + id);
+  // In mashlib mode the URL is a real Solid resource — its fragment
+  // identifies an RDF subject, not app state. Don't pollute it.
+  if (!window.__hubMashlibActive) history.replaceState(null, "", "#" + id);
 
   const sidebar = $("#sidebar");
   const main = $("#main");
@@ -132,9 +151,13 @@ function switchApp(id) {
     main.classList.add("main-no-sidebar");
   }
 
-  // Update topbar title
-  $("#topbar-title").innerHTML = state.app === "home" ? "" :
-    `<span class="crumb">hub-pod</span> / ${escape(a.meta.name)}`;
+  // Update topbar title — but when a resource hint is active (mashlib
+  // data island OR standalone ?uri=), the topbar shows a URL-derived
+  // breadcrumb instead (owned by nav.js). Don't clobber it.
+  if (!window.__hubMashlib?.uri) {
+    $("#topbar-title").innerHTML = state.app === "home" ? "" :
+      `<span class="crumb">hub-pod</span> / ${escape(a.meta.name)}`;
+  }
 
   Promise.resolve(a.render(main, ctx)).catch(e => {
     console.error("App render error:", e);
@@ -311,9 +334,21 @@ async function init() {
 
   buildRail();
 
-  // Initial app from URL fragment, default home
+  // When a resource hint is present (mashlib data island OR standalone
+  // ?uri=), install the URL-driven topbar breadcrumb. switchApp will yield
+  // the topbar to it via the !window.__hubMashlib?.uri guard.
+  if (window.__hubMashlib?.uri) {
+    installCrumbUpdater();
+    renderPathCrumbs();
+  }
+
+  // Initial app — URL hint wins over hash, hash wins over default.
+  const hint = window.__hubMashlib;
+  const hintApp = hint ? pickAppForHint(hint) : null;
   const hash = location.hash.replace("#", "");
-  switchApp(findApp(hash) ? hash : "home");
+  const target = hintApp || (findApp(hash) ? hash : "home");
+  state.app = target;
+  switchApp(target);
 
   // First-visit hint
   setTimeout(() => {

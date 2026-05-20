@@ -1,0 +1,27 @@
+{
+  "name": "hub",
+  "version": "0.0.1",
+  "description": "A multi-app workspace for your Solid pod. Profile, Files, Calendar, Contacts, Notes, Tasks, Photos — all stored as JSON-LD on a pod you own.",
+  "main": "mashlib.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build:mashlib": "esbuild src/mashlib.js --bundle --format=esm --loader:.css=text --target=es2022 --minify --outfile=mashlib.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/solid-apps/hub.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/solid-apps/hub/issues"
+  },
+  "homepage": "https://github.com/solid-apps/hub#readme",
+  "devDependencies": {
+    "esbuild": "^0.28.0",
+    "htm": "^3.1.1",
+    "preact": "^10.19.0"
+  }
+}

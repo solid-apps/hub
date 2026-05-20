@@ -6,6 +6,7 @@
  */
 
 import { hubRoot, discoverStorage } from "../pod.js";
+import { pushResourceUrl } from "../nav.js";
 import { findFor } from "../panes.js";
 import { subscribe } from "../notifications.js";
 import { ICON, escape, $, $$, requireSolid } from "../ui.js";
@@ -47,7 +48,18 @@ export async function render(container, ctx) {
   // Default to /public/ — that's where most user-visible artefacts live
   // (notes, photos, posts, trackers). hub-pod data is private app state;
   // pod root is mostly chrome.
-  currentDir = publicDir(storage);
+  //
+  // In mashlib mode, the URL is the source of truth: container URL lists
+  // it directly; resource URL lists its parent so the user sees where
+  // they navigated to.
+  const mashlibUri = window.__hubMashlib?.uri;
+  if (mashlibUri && mashlibUri.endsWith("/")) {
+    currentDir = mashlibUri;
+  } else if (mashlibUri) {
+    currentDir = mashlibUri.replace(/[^/]+$/, "") || publicDir(storage);
+  } else {
+    currentDir = publicDir(storage);
+  }
   currentCtx = ctx;
   listenerAttached = false;
 
@@ -98,6 +110,11 @@ async function load() {
   const bc = $("#files-bc");
   if (!grid || !bc) return;
   refreshSidebarActive();
+  // Keep the browser URL in sync with currentDir so the address bar reflects
+  // a real Solid URI (shareable, bookmarkable). nav.pushResourceUrl picks
+  // the right contract: full path in mashlib mode, ?uri=<encoded> in
+  // standalone. No-op if there's no resource to push.
+  if (currentDir) pushResourceUrl(currentDir);
   bc.innerHTML = breadcrumbHTML(currentDir);
   $$(".crumb", bc).forEach(el => el.addEventListener("click", () => {
     currentDir = el.dataset.url;

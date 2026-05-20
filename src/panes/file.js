@@ -11,6 +11,7 @@
  */
 
 import { ICON, escape } from "../ui.js";
+import { gotoResource } from "../nav.js";
 
 export const label = "File";
 export const icon  = "📁";
@@ -52,9 +53,12 @@ export async function render(subject, _store, container, rawData) {
   `;
   container.addEventListener("click", () => {
     if (isDir) {
-      container.dispatchEvent(new CustomEvent("pane:open", { detail: { url, type } }));
+      // bubbles:true so Files's grid-level pane:open handler can catch and navigate.
+      container.dispatchEvent(new CustomEvent("pane:open", { detail: { url, type }, bubbles: true }));
     } else {
-      window.open(url, "_blank");
+      // gotoResource routes via mashlib path or standalone ?uri= depending on
+      // mode — same effect either way: hub re-renders with the matching pane.
+      gotoResource(url);
     }
   });
 }
