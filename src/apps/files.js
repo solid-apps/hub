@@ -43,7 +43,15 @@ export async function render(container, ctx) {
     container.innerHTML = `<div class="content"><div class="page-pad"><h1>Files</h1><p class="lede">Couldn't find your pod root.</p></div></div>`;
     return;
   }
-  currentDir = hubRoot(storage);
+  // When loaded as a JSS mashlib on a container URL, mashlib.js stashes
+  // the URL in window.__hubMashlib. Honour it on first render so Files
+  // lands where the user actually navigated.
+  const mashlibUri = window.__hubMashlib?.uri;
+  if (mashlibUri && mashlibUri.endsWith("/")) {
+    currentDir = mashlibUri;
+  } else {
+    currentDir = hubRoot(storage);
+  }
   currentCtx = ctx;
   listenerAttached = false;
 

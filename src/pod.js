@@ -39,7 +39,10 @@ export async function getJsonLd(url) {
   if (ct.includes("text/html")) {
     const html = await res.text();
     const m = html.match(/<script\s+type=["']application\/ld\+json["']\s*>([\s\S]*?)<\/script>/i);
-    if (!m) throw new Error(`HTML WebID without JSON-LD island (${url})`);
+    // JSS serves an HTML landing page on the pod root in single-user mode —
+    // no JSON-LD island. Treat as "not an LDP container" rather than an error
+    // so Files surfaces an empty/non-listable state instead of crashing.
+    if (!m) return null;
     return parseLooseJson(m[1].trim());
   }
   throw new Error(`pod returned ${ct || "unknown content type"} (need JSON-LD or HTML+island)`);
