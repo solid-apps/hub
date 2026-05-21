@@ -1,0 +1,14 @@
+{
+  "name": "hub",
+  "short_name": "hub",
+  "description": "Multi-app Solid workspace — opens any pod resource in the right app",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#ec4899",
+  "theme_color": "#ec4899",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}
