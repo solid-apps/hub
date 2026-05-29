@@ -1,11 +1,12 @@
 {
   "name": "hub",
   "version": "0.0.1",
-  "description": "A multi-app workspace for your Solid pod. Profile, Files, Calendar, Contacts, Notes, Tasks, Photos — all stored as JSON-LD on a pod you own.",
+  "description": "A multi-app workspace for your Solid pod. Profile, Files, Calendar, Contacts, Notes, Tasks, Photos \u2014 all stored as JSON-LD on a pod you own.",
   "main": "mashlib.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build:mashlib": "esbuild src/mashlib.js --bundle --format=esm --loader:.css=text --target=es2022 --minify --outfile=mashlib.js"
+    "build:mashlib": "esbuild src/mashlib.js --bundle --format=esm --loader:.css=text --target=es2022 --minify --outfile=mashlib.js",
+    "build:panes": "for f in event list bookmark post; do node_modules/.bin/esbuild src/panes/$f.js --bundle --format=esm --external:preact --external:preact/hooks --external:htm --target=es2022 --outfile=panes/$f.js; done"
   },
   "repository": {
     "type": "git",
