@@ -63,6 +63,24 @@ export async function render(subject, _store, container, rawData) {
 
   injectStyles();
 
+  // Declared before the first draw() — draw() binds `save` as the textarea's
+  // input handler, so it must already be initialised (was a TDZ bug).
+  const save = debounce(async () => {
+    const newContent = container.querySelector("#post-content")?.value ?? content;
+    if (newContent === content) return;
+    content = newContent;
+    const contentKey = CONTENT_KEYS.find(k => doc[k] !== undefined) || "as:content";
+    doc[contentKey] = newContent;
+    setStatus("saving");
+    try {
+      await putJsonLd(url.replace(/#.*$/, ""), doc);
+      setStatus("saved");
+      container.dispatchEvent(new CustomEvent("pane:change", { detail: { url, doc } }));
+    } catch (e) {
+      setStatus("err", e.message);
+    }
+  }, 600);
+
   // Initial render — author shows as a placeholder (just the WebID
   // hostname) and gets upgraded with profile data once it arrives.
   draw({ name: shortHost(author) || "Anonymous", img: null });
@@ -107,22 +125,6 @@ export async function render(subject, _store, container, rawData) {
       }
     });
   }
-
-  const save = debounce(async () => {
-    const newContent = container.querySelector("#post-content")?.value ?? content;
-    if (newContent === content) return;
-    content = newContent;
-    const contentKey = CONTENT_KEYS.find(k => doc[k] !== undefined) || "as:content";
-    doc[contentKey] = newContent;
-    setStatus("saving");
-    try {
-      await putJsonLd(url.replace(/#.*$/, ""), doc);
-      setStatus("saved");
-      container.dispatchEvent(new CustomEvent("pane:change", { detail: { url, doc } }));
-    } catch (e) {
-      setStatus("err", e.message);
-    }
-  }, 600);
 
   function setStatus(kind, msg) {
     const el = container.querySelector("#post-status");

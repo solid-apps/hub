@@ -258,6 +258,21 @@ async function render(subject, _store, container, rawData) {
   const author = valueOf(rd(doc, ...AUTHOR_KEYS)) || "";
   const published = rd(doc, ...PUBLISHED_KEYS);
   injectStyles();
+  const save = debounce(async () => {
+    const newContent = container.querySelector("#post-content")?.value ?? content;
+    if (newContent === content) return;
+    content = newContent;
+    const contentKey = CONTENT_KEYS.find((k) => doc[k] !== void 0) || "as:content";
+    doc[contentKey] = newContent;
+    setStatus("saving");
+    try {
+      await putJsonLd(url.replace(/#.*$/, ""), doc);
+      setStatus("saved");
+      container.dispatchEvent(new CustomEvent("pane:change", { detail: { url, doc } }));
+    } catch (e) {
+      setStatus("err", e.message);
+    }
+  }, 600);
   draw({ name: shortHost(author) || "Anonymous", img: null });
   if (author) {
     fetchWebIdProfile(author).then((profile) => {
@@ -299,21 +314,6 @@ async function render(subject, _store, container, rawData) {
       }
     });
   }
-  const save = debounce(async () => {
-    const newContent = container.querySelector("#post-content")?.value ?? content;
-    if (newContent === content) return;
-    content = newContent;
-    const contentKey = CONTENT_KEYS.find((k) => doc[k] !== void 0) || "as:content";
-    doc[contentKey] = newContent;
-    setStatus("saving");
-    try {
-      await putJsonLd(url.replace(/#.*$/, ""), doc);
-      setStatus("saved");
-      container.dispatchEvent(new CustomEvent("pane:change", { detail: { url, doc } }));
-    } catch (e) {
-      setStatus("err", e.message);
-    }
-  }, 600);
   function setStatus(kind, msg) {
     const el = container.querySelector("#post-status");
     if (!el) return;
